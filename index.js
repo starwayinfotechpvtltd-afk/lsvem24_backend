@@ -6,7 +6,23 @@ const app = express();
 //cors
 const cors = require("cors");
 
-app.use(cors());
+const allowedOrigins = process.env.FRONTEND_URLS.split(",");
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // allow requests without origin (Postman, mobile apps)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 //logging middleware
@@ -99,7 +115,7 @@ db.once("open", async () => {
     res.status(200).sendFile(path.join(__dirname, "public", "index.html"));
   });
 
-  const PORT = process.env.PORT || 5000;
+  const PORT = process.env.PORT || 5001;
   server.listen(PORT, '0.0.0.0', () => {
     console.log("Hello World ! listening on " + PORT);
   });
