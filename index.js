@@ -40,7 +40,7 @@ global.io = require("socket.io")(server);
 const Setting = require("./models/setting.model");
 
 //settingJson
-const settingJson = require("./setting");
+// const settingJson = require("./setting");
 
 //Declare global variable
 global.settingJSON = {};
