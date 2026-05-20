@@ -6,7 +6,7 @@ const app = express();
 //cors
 const cors = require("cors");
 
-const allowedOrigins = process.env.FRONTEND_URLS.split(",");
+const allowedOrigins = process.env.FRONTEND_URLS?.split(",");
 
 app.use(
   cors({
@@ -109,10 +109,11 @@ db.once("open", async () => {
   // ✅ FIX: This catch-all route should be LAST and should NOT catch API routes
   app.get("/*", (req, res) => {
     // Check if it's an API route
-    if (req.path.startsWith('/api')) {
-      return res.status(404).json({ status: false, message: 'API route not found' });
-    }
-    res.status(200).sendFile(path.join(__dirname, "public", "index.html"));
+    // if (req.path.startsWith('/api')) {
+    //   return res.status(404).json({ status: false, message: 'API route not found' });
+    // }
+    // res.status(200).sendFile(path.join(__dirname, "public", "index.html"));
+    res.status(200).json({status: true, message: "Backend is running "})
   });
 
   const PORT = process.env.PORT || 5001;
