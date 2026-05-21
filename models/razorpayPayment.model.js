@@ -30,7 +30,7 @@ const razorpayPaymentSchema = new mongoose.Schema(
     receipt: { type: String, default: null },
     status: {
       type: String,
-      enum: ["created", "paid", "failed", "fulfilled"],
+      enum: ["created", "paid", "processing", "failed", "fulfilled"],
       default: "created",
     },
     paymentGateway: { type: String, default: "Razorpay" },

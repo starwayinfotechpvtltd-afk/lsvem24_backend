@@ -23,6 +23,26 @@ app.use(
     credentials: true,
   })
 );
+
+// Razorpay webhook must use raw body for signature verification (before express.json)
+const { razorpayWebhook } = require("./controllers/client/paymentWebhook.controller");
+app.post(
+  "/api/client/payment/razorpay/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res, next) => {
+    const raw =
+      Buffer.isBuffer(req.body) ? req.body.toString("utf8") : "";
+    req.rawBody = raw;
+    try {
+      req.body = raw ? JSON.parse(raw) : {};
+    } catch {
+      req.body = {};
+    }
+    next();
+  },
+  razorpayWebhook,
+);
+
 app.use(express.json());
 
 //logging middleware

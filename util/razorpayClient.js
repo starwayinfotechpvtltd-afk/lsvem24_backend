@@ -23,4 +23,20 @@ function verifyPaymentSignature({ orderId, paymentId, signature }) {
   return expected === signature;
 }
 
-module.exports = { getRazorpayInstance, verifyPaymentSignature };
+function verifyWebhookSignature({ rawBody, signature }) {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
+  if (!secret || !rawBody || !signature) {
+    return false;
+  }
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+  return expected === signature;
+}
+
+module.exports = {
+  getRazorpayInstance,
+  verifyPaymentSignature,
+  verifyWebhookSignature,
+};

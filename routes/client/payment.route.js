@@ -7,7 +7,6 @@ const {
   getRazorpayPaymentStatus,
   updateRazorpayPaymentFailed,
 } = require("../../controllers/client/payment.controller");
-
 const payment = express.Router();
 
 payment.get("/razorpay-config", checkAccessWithSecretKey(), getRazorpayConfig);
@@ -31,5 +30,4 @@ payment.post(
   checkAccessWithSecretKey(),
   updateRazorpayPaymentFailed,
 );
-
 module.exports = payment;

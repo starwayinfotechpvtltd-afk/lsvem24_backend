@@ -8,10 +8,7 @@ const {
   getRazorpayInstance,
   verifyPaymentSignature,
 } = require("../../util/razorpayClient");
-const {
-  fulfillPremiumPlan,
-  fulfillCoinPlan,
-} = require("../../services/paymentFulfillment.service");
+const { fulfillRazorpayOrder } = require("../../services/razorpayPayment.service");
 
 function getCurrency() {
   const setting = global.settingJSON || {};
@@ -70,7 +67,9 @@ exports.createRazorpayOrder = async (req, res) => {
 
     const user = await User.findOne({ _id: userId, isActive: true });
     if (!user) {
-      return res.status(200).json({ status: false, message: "User not found." });
+      return res
+        .status(404)
+        .json({ status: false, message: "User not found." });
     }
     if (user.isBlock) {
       return res
@@ -175,14 +174,15 @@ exports.createRazorpayOrder = async (req, res) => {
 /** Step 2 — Verify signature, Step 3 — Fulfill plan & update status. */
 exports.verifyRazorpayPayment = async (req, res) => {
   try {
-    const {
-      userId,
-      razorpayOrderId,
-      razorpayPaymentId,
-      razorpaySignature,
-    } = req.body;
+    const { userId, razorpayOrderId, razorpayPaymentId, razorpaySignature } =
+      req.body;
 
-    if (!userId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    if (
+      !userId ||
+      !razorpayOrderId ||
+      !razorpayPaymentId ||
+      !razorpaySignature
+    ) {
       return res.status(200).json({
         status: false,
         message:
@@ -192,13 +192,19 @@ exports.verifyRazorpayPayment = async (req, res) => {
 
     const paymentRecord = await RazorpayPayment.findOne({
       razorpayOrderId,
-      userId,
     });
 
     if (!paymentRecord) {
       return res.status(200).json({
         status: false,
         message: "Payment order not found.",
+      });
+    }
+
+    if (String(paymentRecord.userId) !== String(userId)) {
+      return res.status(200).json({
+        status: false,
+        message: "Payment does not belong to this user.",
       });
     }
 
@@ -231,41 +237,42 @@ exports.verifyRazorpayPayment = async (req, res) => {
       });
     }
 
-    paymentRecord.status = "paid";
-    paymentRecord.razorpayPaymentId = razorpayPaymentId;
-    paymentRecord.razorpaySignature = razorpaySignature;
-    await paymentRecord.save();
-
-    let fulfillment = null;
     try {
-      if (paymentRecord.purpose === "premium_plan") {
-        fulfillment = await fulfillPremiumPlan(
-          userId,
-          paymentRecord.premiumPlanId,
-        );
-      } else if (paymentRecord.purpose === "coin_plan") {
-        fulfillment = await fulfillCoinPlan(userId, paymentRecord.coinPlanId);
-      }
+      const result = await fulfillRazorpayOrder(razorpayOrderId, {
+        razorpayPaymentId,
+        razorpaySignature,
+      });
 
-      paymentRecord.status = "fulfilled";
-      paymentRecord.fulfilledAt = new Date();
-      await paymentRecord.save();
+      if (!result.ok) {
+        const latest = await RazorpayPayment.findOne({ razorpayOrderId });
+        return res.status(200).json({
+          status: latest?.status === "fulfilled",
+          message:
+            latest?.status === "fulfilled"
+              ? "Payment fulfilled via webhook."
+              : "Payment is being processed. Check status shortly.",
+          paymentStatus: latest?.status || paymentRecord.status,
+          purpose: latest?.purpose || paymentRecord.purpose,
+        });
+      }
 
       return res.status(200).json({
         status: true,
-        message: "Payment verified and plan activated successfully.",
-        paymentStatus: paymentRecord.status,
-        purpose: paymentRecord.purpose,
-        history: fulfillment?.history || null,
+        message: result.alreadyFulfilled
+          ? "Payment already fulfilled."
+          : "Payment verified and plan activated successfully.",
+        paymentStatus: "fulfilled",
+        purpose: result.purpose,
+        history: result.history || null,
       });
     } catch (fulfillError) {
-      paymentRecord.failureReason = fulfillError.message;
-      await paymentRecord.save();
+      const latest = await RazorpayPayment.findOne({ razorpayOrderId });
       console.error("Fulfillment error:", fulfillError);
       return res.status(500).json({
         status: false,
-        message: fulfillError.message || "Payment verified but fulfillment failed.",
-        paymentStatus: paymentRecord.status,
+        message:
+          fulfillError.message || "Payment verified but fulfillment failed.",
+        paymentStatus: latest?.status || "paid",
       });
     }
   } catch (error) {
