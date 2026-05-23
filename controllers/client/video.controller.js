@@ -14,12 +14,13 @@ const VideoComment = require("../../models/videoComment.model");
 const Report = require("../../models/report.model");
 const LikeHistoryOfVideoComment = require("../../models/likeHistoryOfVideoComment.model");
 const PlayList = require("../../models/playList.model");
+const path =require("path");
+const { optimizeMediaUrls } = require("../../util/optimizeUploadedMedia");
 
 //deleteFromStorage
 const { deleteFromStorage } = require("../../util/storageHelper");
 
-//private key
-const admin = require("../../util/privateKey");
+const { sendFcmMessage } = require("../../util/fcmNotification");
 
 //momemt
 const moment = require("moment");
@@ -96,28 +97,14 @@ exports.unlockPrivateVideo = async (req, res) => {
     ]);
 
     if (user.fcmToken) {
-      const adminInstance = await admin;
-      const notificationPayload = {
+      sendFcmMessage({
         token: user.fcmToken,
         notification: {
           title: "Video Unlocked Successfully!",
           body: `You've successfully unlocked the video for ${unlockCost} coins! Enjoy the content!`,
         },
-        data: {
-          type: "VIDEO_UNLOCKED",
-        },
-      };
-
-      // Send the notification
-      adminInstance
-        .messaging()
-        .send(notificationPayload)
-        .then((response) => {
-          console.log("Notification sent successfully: ", response);
-        })
-        .catch((error) => {
-          console.error("Error sending notification: ", error);
-        });
+        data: { type: "VIDEO_UNLOCKED" },
+      });
     }
   } catch (error) {
     console.error("Error in unlockPrivateVideo: ", error);
@@ -189,7 +176,7 @@ exports.createVideo = async (req, res) => {
       });
     }
 
-    const videoTimeInSeconds = convertTimeToSeconds(req.body.videoTime);
+    const videoTimeMs = parseInt(req.body.videoTime, 10) || 0;
 
     // Validate schedule type
     if (req.body.scheduleType == 1 && !req.body.scheduleTime) {
@@ -201,13 +188,14 @@ exports.createVideo = async (req, res) => {
       });
     }
 
-    if (req.body.videoType == 2) {
-      if (settingJSON.durationOfShorts < videoTimeInSeconds) {
+    if (parseInt(req.body.videoType, 10) === 2) {
+      const maxShortMs = parseInt(settingJSON.durationOfShorts, 10) || 0;
+      if (maxShortMs > 0 && videoTimeMs > maxShortMs) {
         if (req.body.videoImage) await deleteFromStorage(req.body.videoImage);
         if (req.body.videoUrl) await deleteFromStorage(req.body.videoUrl);
         return res.status(200).json({
           status: false,
-          message: `Shorts duration must be less than ${settingJSON.durationOfShorts} seconds!`
+          message: `Shorts duration must be less than ${Math.round(maxShortMs / 1000)} seconds!`
         });
       }
     }
@@ -256,6 +244,13 @@ exports.createVideo = async (req, res) => {
       });
     }
 
+    const isShort = parseInt(req.body.videoType, 10) === 2;
+    const { videoUrl: optimizedVideoUrl, videoImage: optimizedThumbUrl } =
+      await optimizeMediaUrls({
+        videoUrl: req.body.videoUrl,
+        videoImage: req.body.videoImage,
+        isShort,
+      });
 
     const video = new Video();
 
@@ -300,9 +295,9 @@ exports.createVideo = async (req, res) => {
     video.title = req.body.title.trim();
     video.description = req.body.description ? req.body.description.trim() : "";
     video.videoType = parseInt(req.body.videoType) || 1;
-    video.videoTime = videoTimeInSeconds;
-    video.videoUrl = req.body.videoUrl;
-    video.videoImage = req.body.videoImage;
+    video.videoTime = videoTimeMs;
+    video.videoUrl = optimizedVideoUrl;
+    video.videoImage = optimizedThumbUrl;
     video.visibilityType = parseInt(req.body.visibilityType) || 1;
     video.audienceType = parseInt(req.body.audienceType) || 1;
     video.commentType = parseInt(req.body.commentType) || 1;
@@ -331,8 +326,17 @@ exports.createVideo = async (req, res) => {
     };
 
     if (req.body.hashTag) {
-      const hashtags = req.body.hashTag.toString().split(",").map(tag => tag.trim());
-      video.hashTag = hashtags;
+      if (Array.isArray(req.body.hashTag)) {
+        video.hashTag = req.body.hashTag
+          .map((tag) => String(tag).trim())
+          .filter(Boolean);
+      } else {
+        video.hashTag = req.body.hashTag
+          .toString()
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+      }
     }
 
     video.soundListId = soundList?._id || null;
@@ -2608,11 +2612,12 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
       return res.status(200).json({ status: false, message: "video does not found!" });
     }
 
+    const countDoc = likedOrDislikedVideo || video;
+
     if (alreadylikedOrDislikedVideo) {
       if (req.query.likeOrDislike === "like") {
         console.log("like request");
 
-        //If the request is for a like, decrease the dislike count (if any) and increase the like count
         await LikeHistoryOfVideo.deleteOne({
           userId: user._id,
           videoId: video._id,
@@ -2620,8 +2625,7 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
           likeOrDislike: "dislike",
         });
 
-        let likeHistory;
-        likeHistory = await LikeHistoryOfVideo.findOne({
+        let likeHistory = await LikeHistoryOfVideo.findOne({
           userId: user._id,
           videoId: video._id,
           channelId: video?.channelId,
@@ -2638,94 +2642,62 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
 
           await likeHistory.save();
 
-          //Decrease dislike count if greater than 0
-          if (likedOrDislikedVideo.dislike > 0) {
-            likedOrDislikedVideo.dislike -= 1;
+          if (countDoc.dislike > 0) {
+            countDoc.dislike -= 1;
           }
 
-          likedOrDislikedVideo.like += 1;
-          await likedOrDislikedVideo.save();
+          countDoc.like += 1;
+          await countDoc.save();
         }
 
-        res.status(200).json({
-          status: true,
-          message: "like count increased and dislike count decreased (if any).",
-          isLike: true,
-        });
-
-        //when user like videos and earn coins
         const uniqueId = await generateHistoryUniqueId();
-        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins;
+        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins || 0;
 
-        const [updatedReceiver, historyEntry] = await Promise.all([
+        await Promise.all([
           User.findOneAndUpdate(
             { _id: user._id },
-            {
-              $inc: {
-                coin: likeVideoRewardCoins,
-              },
-            },
-            { new: true }
+            { $inc: { coin: likeVideoRewardCoins } },
+            { new: true },
           ),
           History({
             userId: user._id,
-            uniqueId: uniqueId,
+            uniqueId,
             coin: likeVideoRewardCoins,
             type: 7,
-            date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+            date: new Date().toLocaleString("en-US", {
+              timeZone: "Asia/Kolkata",
+            }),
           }).save(),
         ]);
 
-        if (user.fcmToken && user.fcmToken !== null) {
-          const adminPromise = await admin;
-
-          const payload = {
+        if (user.fcmToken) {
+          sendFcmMessage({
             token: user.fcmToken,
             notification: {
               title: "👍 You've Earned Coins for Liking a Video! Keep Liking! 💰",
               body: `You've earned ${likeVideoRewardCoins} coins for liking a video! The more you like, the more you earn! 🚀🎬`,
             },
-            data: {
-              type: "ENGAGEMENT_LIKING_REWARD",
-            },
-          };
-
-          adminPromise
-            .messaging()
-            .send(payload)
-            .then((response) => {
-              console.log("Successfully sent with response: ", response);
-            })
-            .catch((error) => {
-              console.log("Error sending message: ", error);
-            });
+            data: { type: "ENGAGEMENT_LIKING_REWARD" },
+          });
         }
 
         const videoUser = await User.findById(video.userId);
-        if (videoUser.fcmToken && videoUser.fcmToken !== null) {
-          const adminPromise = await admin;
-
-          const payload = {
+        if (videoUser?.fcmToken) {
+          sendFcmMessage({
             token: videoUser.fcmToken,
             notification: {
               title: "🌟 Great News! Someone Liked Your Video! 👍",
-              body: `Your video received a new like! 🎥💖 Keep up the great work and continue creating amazing content that your audience loves!`,
+              body: "Your video received a new like! 🎥💖 Keep creating amazing content!",
             },
-            data: {
-              type: "VIDEO_LIKING_NOTIFICATION",
-            },
-          };
-
-          adminPromise
-            .messaging()
-            .send(payload)
-            .then((response) => {
-              console.log("Successfully sent with response: ", response);
-            })
-            .catch((error) => {
-              console.log("Error sending message: ", error);
-            });
+            data: { type: "VIDEO_LIKING_NOTIFICATION" },
+          });
         }
+
+        return res.status(200).json({
+          status: true,
+          message: "like count increased and dislike count decreased (if any).",
+          isLike: true,
+        });
       } else if (req.query.likeOrDislike === "dislike") {
         console.log("dislike request");
 
@@ -2756,38 +2728,30 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
 
           await likeHistory.save();
 
-          //Decrease like count if greater than 0
-          if (likedOrDislikedVideo.like > 0) {
-            likedOrDislikedVideo.like -= 1;
+          if (countDoc.like > 0) {
+            countDoc.like -= 1;
           }
 
-          likedOrDislikedVideo.dislike += 1;
-          await likedOrDislikedVideo.save();
+          countDoc.dislike += 1;
+          await countDoc.save();
         }
 
-        res.status(200).json({
+        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins || 0;
+
+        await Promise.all([
+          User.findOneAndUpdate(
+            { _id: user._id, coin: { $gt: 0 } },
+            { $inc: { coin: -likeVideoRewardCoins } },
+            { new: true },
+          ),
+          History.deleteOne({ userId: user._id, type: 7 }),
+        ]);
+
+        return res.status(200).json({
           status: true,
           message: "dislike count increased and like count decreased (if any).",
           isLike: false,
         });
-
-        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins;
-
-        const [updatedReceiver, historyEntry] = await Promise.all([
-          User.findOneAndUpdate(
-            { _id: user._id, coin: { $gt: 0 } },
-            {
-              $inc: {
-                coin: -likeVideoRewardCoins,
-              },
-            },
-            { new: true }
-          ),
-          History({
-            userId: user._id,
-            type: 7,
-          }).deleteOne(),
-        ]);
       } else {
         return res.status(200).json({ status: false, message: "likeOrDislike must be passed valid." });
       }
@@ -2806,142 +2770,130 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
         likeHistory.likeOrDislike = "like";
         await likeHistory.save();
 
-        res.status(200).json({ status: true, message: "likeOrDislike wise like or dislike updated.", isLike: true });
-
         const uniqueId = await generateHistoryUniqueId();
+        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins || 0;
 
-        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins;
-
-        const [updatedReceiver, historyEntry] = await Promise.all([
+        await Promise.all([
           User.findOneAndUpdate(
             { _id: user._id },
-            {
-              $inc: {
-                coin: likeVideoRewardCoins,
-              },
-            },
-            { new: true }
+            { $inc: { coin: likeVideoRewardCoins } },
+            { new: true },
           ),
           History({
             userId: user._id,
-            uniqueId: uniqueId,
+            uniqueId,
             coin: likeVideoRewardCoins,
             type: 7,
-            date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+            date: new Date().toLocaleString("en-US", {
+              timeZone: "Asia/Kolkata",
+            }),
           }).save(),
         ]);
 
-        if (user.fcmToken && user.fcmToken !== null) {
-          const adminPromise = await admin;
-
-          const payload = {
+        if (user.fcmToken) {
+          sendFcmMessage({
             token: user.fcmToken,
             notification: {
               title: "👍 You've Earned Coins for Liking a Video! Keep Liking! 💰",
-              body: `You've earned ${likeVideoRewardCoins} coins for liking a video! The more you like, the more you earn! 🚀🎬`,
+              body: `You've earned ${likeVideoRewardCoins} coins for liking a video!`,
             },
-            data: {
-              type: "ENGAGEMENT_LIKING_REWARD",
-            },
-          };
-
-          adminPromise
-            .messaging()
-            .send(payload)
-            .then((response) => {
-              console.log("Successfully sent with response: ", response);
-            })
-            .catch((error) => {
-              console.log("Error sending message: ", error);
-            });
+            data: { type: "ENGAGEMENT_LIKING_REWARD" },
+          });
         }
 
         const videoUser = await User.findById(video.userId);
-        if (videoUser.fcmToken && videoUser.fcmToken !== null) {
-          const adminPromise = await admin;
-
-          const payload = {
+        if (videoUser?.fcmToken) {
+          sendFcmMessage({
             token: videoUser.fcmToken,
             notification: {
               title: "🌟 Great News! Someone Liked Your Video! 👍",
-              body: `Your video received a new like! 🎥💖 Keep up the great work and continue creating amazing content that your audience loves!`,
+              body: "Your video received a new like!",
             },
-            data: {
-              type: "VIDEO_LIKING_NOTIFICATION",
-            },
-          };
-
-          adminPromise
-            .messaging()
-            .send(payload)
-            .then((response) => {
-              console.log("Successfully sent with response: ", response);
-            })
-            .catch((error) => {
-              console.log("Error sending message: ", error);
-            });
+            data: { type: "VIDEO_LIKING_NOTIFICATION" },
+          });
         }
+
+        return res.status(200).json({
+          status: true,
+          message: "likeOrDislike wise like or dislike updated.",
+          isLike: true,
+        });
       } else if (req.query.likeOrDislike === "dislike") {
         video.dislike += 1;
         await video.save();
 
         const likeHistory = new LikeHistoryOfVideo();
-
         likeHistory.userId = user._id;
         likeHistory.videoId = video._id;
         likeHistory.channelId = video.channelId;
         likeHistory.likeOrDislike = "dislike";
         await likeHistory.save();
 
-        res.status(200).json({ status: true, message: "likeOrDislike wise like or dislike updated", isLike: false });
+        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins || 0;
 
-        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins;
-
-        const [updatedReceiver, historyEntry] = await Promise.all([
+        await Promise.all([
           User.findOneAndUpdate(
             { _id: user._id },
-            {
-              $inc: {
-                coin: -likeVideoRewardCoins,
-              },
-            },
-            { new: true }
+            { $inc: { coin: -likeVideoRewardCoins } },
+            { new: true },
           ),
-          History({
-            userId: user._id,
-            type: 7,
-          }).deleteOne(),
+          History.deleteOne({ userId: user._id, type: 7 }),
         ]);
+
+        return res.status(200).json({
+          status: true,
+          message: "likeOrDislike wise like or dislike updated",
+          isLike: false,
+        });
       } else {
-        return res.status(200).json({ status: true, message: "likeOrDislike must be passed valid" });
+        return res.status(200).json({
+          status: false,
+          message: "likeOrDislike must be passed valid",
+        });
       }
     }
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
+    if (res.headersSent) return;
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Internal Server Error",
+    });
   }
 };
 
 //get all more like this (normal videos or shorts)
 exports.getAllLikeThis = async (req, res) => {
   try {
-    if (!req.query.videoId ) {  // || !req.query.userId
-      return res.status(400).json({ status: false, message: "videoId must be required." });
+    if (!req.query.videoId) {
+      return res.status(200).json({
+        status: false,
+        message: "videoId is required.",
+      });
     }
 
-    // const userId = new mongoose.Types.ObjectId(req.query.userId);
     const videoId = new mongoose.Types.ObjectId(req.query.videoId);
+    let userId = null;
+    let user = null;
 
-    // const [user, video] = await Promise.all([User.findOne({ _id: userId, isActive: true }), Video.findById(videoId)]);
-    const [video] = await Promise.all([Video.findById(videoId)]);
+    if (req.query.userId) {
+      userId = new mongoose.Types.ObjectId(req.query.userId);
+      user = await User.findOne({ _id: userId, isActive: true });
 
-    // if (!user) {
-    //   return res.status(200).json({ status: false, message: "user does not found." });
-    // }
+      if (!user) {
+        return res.status(200).json({ status: false, message: "user does not found." });
+      }
 
-    // if (user.isBlock) {
-    //   return res.status(200).json({ status: false, message: "you are blocked by admin." });
-    // }
+      if (user.isBlock) {
+        return res.status(200).json({ status: false, message: "you are blocked by admin." });
+      }
+    }
+
+    const video = await Video.findOne({
+      _id: videoId,
+      isActive: true,
+      scheduleType: 2,
+    });
 
     if (!video) {
       return res.status(200).json({ status: false, message: "Video does not found." });
@@ -2949,20 +2901,40 @@ exports.getAllLikeThis = async (req, res) => {
 
     const similarVideos = await Video.find({
       _id: { $ne: video._id },
-      videoType: { $eq: video.videoType },
+      videoType: video.videoType,
       scheduleType: 2,
+      isActive: true,
+      visibilityType: 1,
     })
+      .sort({ createdAt: -1 })
+      .limit(30)
       .lean()
       .select("_id title videoImage videoUrl videoTime videoType scheduleType channelId videoPrivacyType userId createdAt");
 
     const data = await Promise.all(
       similarVideos.map(async (similarVideo) => {
-        const [totalViews, isSaved, isSubscribedChannel] = await Promise.all([ // user
+        const lookups = [
           WatchHistory.countDocuments({ videoId: similarVideo?._id }),
-          // User.findById(similarVideo?.userId).select("fullName image channelId"),
-          SaveToWatchLater.exists({ userId: userId, videoId: similarVideo._id }),
-          UserWiseSubscription.findOne({ userId: userId, channelId: similarVideo.channelId }),
-        ]);
+          User.findById(similarVideo?.userId).select(
+            "fullName image channelId subscriptionCost videoUnlockCost channelType",
+          ),
+        ];
+
+        if (userId) {
+          lookups.push(
+            SaveToWatchLater.exists({ userId, videoId: similarVideo._id }),
+            UserWiseSubscription.findOne({
+              userId,
+              channelId: similarVideo.channelId,
+            }),
+          );
+        }
+
+        const results = await Promise.all(lookups);
+        const totalViews = results[0];
+        const channelUser = results[1];
+        const isSaved = userId ? results[2] : false;
+        const isSubscribedChannel = userId ? results[3] : null;
 
         const now = new Date();
         const timeDiff = now - similarVideo?.createdAt;
@@ -2993,23 +2965,27 @@ exports.getAllLikeThis = async (req, res) => {
           videoType: similarVideo.videoType,
           channelId: similarVideo.channelId,
           videoPrivacyType: similarVideo.videoPrivacyType,
-          // user: {
-          //   fullName: user?.fullName,
-          //   image: user?.image,
-          //   channelId: user?.channelId,
-          //   subscriptionCost: user?.subscriptionCost || 0,
-          //   videoUnlockCost: user?.videoUnlockCost || 0,
-          //   channelType: user?.channelType || 0,
-          // },
+          user: {
+            fullName: channelUser?.fullName,
+            image: channelUser?.image,
+            channelId: channelUser?.channelId,
+            subscriptionCost: channelUser?.subscriptionCost || 0,
+            videoUnlockCost: channelUser?.videoUnlockCost || 0,
+            channelType: channelUser?.channelType || 0,
+          },
           totalViews: totalViews,
           time: timeAgo,
-          isSavedToWatchLater: isSaved ? true : false,
-          isSubscribedChannel: isSubscribedChannel ? true : false,
+          isSavedToWatchLater: Boolean(isSaved),
+          isSubscribedChannel: Boolean(isSubscribedChannel),
         };
       })
     );
 
-    return res.status(200).json({ status: true, message: "Successfully retrieved similar videos.", data });
+    return res.status(200).json({
+      status: true,
+      message: "Successfully retrieved similar videos.",
+      data,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
@@ -3193,21 +3169,21 @@ exports.search = async (req, res) => {
 //previous search (normal videos or shorts) for user
 exports.searchData = async (req, res) => {
   try {
-    // if (!req.query.userId) {
-    //   return res.status(200).json({
-    //     status: false,
-    //     message: "Oops! Invalid details!",
-    //   });
-    // }
+    if (!req.query.userId) {
+      return res.status(200).json({
+        status: false,
+        message: "Oops! Invalid details!",
+      });
+    }
 
-    // const user = await User.findOne({ _id: req.query.userId, isActive: true });
-    // if (!user) {
-    //   return res.status(200).json({ status: false, message: "User does not found." });
-    // }
+    const user = await User.findOne({ _id: req.query.userId, isActive: true });
+    if (!user) {
+      return res.status(200).json({ status: false, message: "User does not found." });
+    }
 
-    // if (user.isBlock) {
-    //   return res.status(200).json({ status: false, message: "you are blocked by admin." });
-    // }
+    if (user.isBlock) {
+      return res.status(200).json({ status: false, message: "you are blocked by admin." });
+    }
 
     const lastSearchedData = await SearchHistory.find({ userId: user.id })
       .sort({ createdAt: -1 }) //Sort by most recently searched

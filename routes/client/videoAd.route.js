@@ -1,5 +1,4 @@
 const express = require("express");
-const multer = require("multer");
 const {
   uploadVideoAd,
   getAllVideoAd,
@@ -13,19 +12,8 @@ const {
 
 const videoAd = express.Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 },
-});
-
-videoAd.post(
-  "/uploadAd",
-  upload.fields([
-    { name: "video", maxCount: 1 },
-    { name: "image", maxCount: 1 },
-  ]),
-  uploadVideoAd,
-);
+// JSON body: { image, video } URLs after client compress + file upload
+videoAd.post("/uploadAd", uploadVideoAd);
 videoAd.get("/getAllVideoAd", getAllVideoAd);
 videoAd.get("/videoAdById/:id", videoAdById); // Changed to GET with param
 

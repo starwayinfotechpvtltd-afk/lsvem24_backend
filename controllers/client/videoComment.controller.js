@@ -8,8 +8,7 @@ const Video = require("../../models/video.model");
 const LikeHistoryOfVideoComment = require("../../models/likeHistoryOfVideoComment.model");
 const History = require("../../models/history.model");
 
-//private key
-const admin = require("../../util/privateKey");
+const { sendFcmMessage } = require("../../util/fcmNotification");
 
 //generateHistoryUniqueId
 const { generateHistoryUniqueId } = require("../../util/generateHistoryUniqueId");
@@ -50,59 +49,54 @@ exports.createComment = async (req, res) => {
     videoComment.commentText = req.body.commentText;
     await videoComment.save();
 
-    res.status(200).json({ status: true, message: "Comment passed on video by that user.", videoComment });
+    const videoCommentAlreadyExist = await VideoComment.find({
+      userId: user._id,
+      videoId: video._id,
+    });
+    const commentingRewardCoins = settingJSON.commentingRewardCoins || 0;
 
-    const videoCommentAlreadyExist = await VideoComment.find({ userId: user._id, videoId: video._id });
-    const commentingRewardCoins = settingJSON.commentingRewardCoins;
-
-    if (videoCommentAlreadyExist.length !== 0) {
-      const [updatedReceiver, historyEntry] = await Promise.all([
+    if (videoCommentAlreadyExist.length === 1 && commentingRewardCoins > 0) {
+      await Promise.all([
         User.findOneAndUpdate(
           { _id: user._id },
-          {
-            $inc: {
-              coin: commentingRewardCoins,
-            },
-          },
-          { new: true }
+          { $inc: { coin: commentingRewardCoins } },
+          { new: true },
         ),
         History({
           userId: user._id,
-          uniqueId: uniqueId,
+          uniqueId,
           coin: commentingRewardCoins,
           type: 6,
-          date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+          date: new Date().toLocaleString("en-US", {
+            timeZone: "Asia/Kolkata",
+          }),
         }).save(),
       ]);
 
-      if (user.fcmToken && user.fcmToken !== null) {
-        const adminPromise = await admin;
-
-        const payload = {
+      if (user.fcmToken) {
+        sendFcmMessage({
           token: user.fcmToken,
           notification: {
             title: "🚀 You've Earned Coins for Your Comment! Keep Engaging! 🌟",
             body: `You've earned ${commentingRewardCoins} coins for commenting on a video! Keep engaging for more rewards! 🎬💬`,
           },
-          data: {
-            type: "ENGAGEMENT_COMMENTING_REWARD",
-          },
-        };
-
-        adminPromise
-          .messaging()
-          .send(payload)
-          .then((response) => {
-            console.log("Successfully sent with response: ", response);
-          })
-          .catch((error) => {
-            console.log("Error sending message: ", error);
-          });
+          data: { type: "ENGAGEMENT_COMMENTING_REWARD" },
+        });
       }
     }
+
+    return res.status(200).json({
+      status: true,
+      message: "Comment passed on video by that user.",
+      videoComment,
+    });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
+    if (res.headersSent) return;
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Internal Server Error",
+    });
   }
 };
 

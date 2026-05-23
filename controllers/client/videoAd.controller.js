@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const VideoAd = require("../../models/videoAdvertise.model");
 const Zone = require("../../models/zone.model");
 const { resolveMatchingZones } = require("../../util/zoneResolver");
+const { optimizeAdMediaUrls } = require("../../util/optimizeUploadedMedia");
 
 const uploadVideoAd = async (req, res) => {
   try {
@@ -26,52 +27,67 @@ const uploadVideoAd = async (req, res) => {
       placement,
     } = req.body;
 
-    const {userId}=req.query
+    const { userId } = req.query;
 
-
-
-    // if (type === "skippable" && !skipAfter) {
-    //   return res
-    //     .status(400)
-    //     .json({ message: "skipAfter is required for skippable ads" });
-    // }
-
-    if (!video && !image) {
-      return res
-        .status(400)
-        .json("Video or image is required" );
+    if (!userId) {
+      return res.status(200).json({
+        status: false,
+        message: "userId is required.",
+      });
     }
 
-    const tagsArray = targetTags ? targetTags.split(",") : [];
+    if (!video && !image) {
+      return res.status(200).json({
+        status: false,
+        message: "Video or image is required.",
+      });
+    }
 
-    // Parse zones (accept JSON array string or comma-separated IDs)
+    const tagsArray = targetTags
+      ? String(targetTags)
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+
     let zoneIds = [];
     if (zones) {
       try {
-        zoneIds = JSON.parse(zones); // e.g., '["id1","id2"]'
+        zoneIds = JSON.parse(zones);
       } catch {
-        zoneIds = zones.split(",").map((z) => z.trim());
+        zoneIds = String(zones)
+          .split(",")
+          .map((z) => z.trim())
+          .filter(Boolean);
       }
-      // Validate that all zone IDs exist
       const validZones = await Zone.find({
         _id: { $in: zoneIds },
         isActive: true,
       });
       if (validZones.length !== zoneIds.length) {
-        return res
-          .status(400)
-          .json({ message: "One or more zone IDs are invalid" });
+        return res.status(200).json({
+          status: false,
+          message: "One or more zone IDs are invalid.",
+        });
       }
     }
 
-    const ad = await VideoAd.create({  
-      video: video,
-      image: image,
+    const runs = adRuns || "long videos";
+    const { video: optimizedVideo, image: optimizedImage } =
+      await optimizeAdMediaUrls({
+        video: video || "",
+        image: image || "",
+        adRuns: runs,
+      });
+
+    const ad = await VideoAd.create({
+      video: optimizedVideo || null,
+      image: optimizedImage || null,
       title,
       description,
       type: type || "skippable",
       duration,
-      skipAfter : skipAfter || 5,
+      skipAfter: skipAfter || 5,
       ctaText,
       ctaLink,
       targetTags: tagsArray,
@@ -81,24 +97,27 @@ const uploadVideoAd = async (req, res) => {
       city,
       category,
       budget,
-      userId: userId,
-      adRuns: adRuns || "long videos",
+      userId,
+      adRuns: runs,
       placement:
         placement && ["pre-roll", "mid-roll", "both"].includes(placement)
           ? placement
           : "pre-roll",
     });
 
-    return res
-      .status(201)
-      .json({ message: "Ad created successfully", status: true, ad });
+    return res.status(200).json({
+      status: true,
+      message: "Ad created successfully",
+      ad,
+    });
   } catch (error) {
     console.error("Upload ad failed", error);
-    console.log("Ads error:", error)
-    return res.status(500).json({ message: "Server error", status: false });
+    return res.status(500).json({
+      status: false,
+      message: error.message || "Server error",
+    });
   }
 };
-
 
 const getAdsByLocation = async (req, res) => {
   try {
@@ -114,10 +133,8 @@ const getAdsByLocation = async (req, res) => {
       baseQuery.placement = { $in: [placement, "both"] };
     }
 
-    // Fetch all active zones
     const allZones = await Zone.find({ isActive: true });
 
-    // Resolve which zones match the user's location
     const matchedZoneIds = resolveMatchingZones(
       { country, state, city, lat: parseFloat(lat), lng: parseFloat(lng) },
       allZones,
@@ -126,14 +143,12 @@ const getAdsByLocation = async (req, res) => {
     let ads = [];
 
     if (matchedZoneIds.length > 0) {
-      // Try to find ads targeting these zones
       ads = await VideoAd.find({
         ...baseQuery,
         zones: { $in: matchedZoneIds },
       }).populate("zones", "name");
     }
 
-    // If no zone-specific ads, fall back to global ads (no zone restriction)
     if (ads.length === 0) {
       ads = await VideoAd.find({
         ...baseQuery,

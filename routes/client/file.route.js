@@ -17,11 +17,14 @@ route.put(
   function (request, response, next) {
     upload(request, response, function (error) {
       if (error) {
-        console.log("error in file ", error);
-      } else {
-        console.log("File uploaded successfully.");
-        next();
+        console.log("error in file upload:", error);
+        return response.status(200).json({
+          status: false,
+          message: error.message || "File upload failed.",
+        });
       }
+      console.log("File uploaded successfully.");
+      next();
     });
   },
   checkAccessWithSecretKey(),
