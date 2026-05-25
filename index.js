@@ -136,7 +136,7 @@ db.once("open", async () => {
     res.status(200).json({status: true, message: "Backend is running "})
   });
 
-  const PORT = process.env.PORT || 5001;
+  const PORT = process.env.PORT || 5003;
   server.listen(PORT, '0.0.0.0', () => {
     console.log("Hello World ! listening on " + PORT);
   });

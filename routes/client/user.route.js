@@ -40,8 +40,7 @@ route.post("/setPassword", checkAccessWithSecretKey(), UserController.setPasswor
 //get particular channel's details (home page)
 route.get("/detailsOfChannel", checkAccessWithSecretKey(), UserController.detailsOfChannel);
 
-//get particular's channel's videoType wise videos (videos, shorts) (your videos)
-route.get("/videosOfChannel", checkAccessWithSecretKey(), UserController.videosOfChannel);
+//get particular's channel's videoType wise videos (videos, shorts) (your videos)kroute.get("/videosOfChannel", checkAccessWithSecretKey(), UserController.videosOfChannel);
 
 //get particular's channel's playLists
 route.get("/playListsOfChannel", checkAccessWithSecretKey(), UserController.playListsOfChannel);

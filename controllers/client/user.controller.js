@@ -1067,7 +1067,7 @@ exports.detailsOfChannel = async (req, res, next) => {
   try {
     if (
       !req.query.channelId ||
-      !req.query.userId ||
+      // !req.query.userId ||
       !req.query.start ||
       !req.query.limit
     ) {
@@ -1079,21 +1079,21 @@ exports.detailsOfChannel = async (req, res, next) => {
     const start = req.query.start ? parseInt(req.query.start) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 20;
 
-    const userId = new mongoose.Types.ObjectId(req.query.userId);
+    // const userId = new mongoose.Types.ObjectId(req.query.userId);
     const channelId = req.query.channelId.toString();
 
     const [
       channel,
-      user,
+      // user,
       totalVideosOfChannel,
       isSubscribedChannel,
       totalSubscribers,
       data,
     ] = await Promise.all([
       User.findOne({ channelId: channelId }),
-      User.findOne({ _id: userId, isActive: true }),
+      // User.findOne({ _id: userId, isActive: true }),
       Video.countDocuments({ channelId: channelId }),
-      UserWiseSubscription.findOne({ userId: userId, channelId: channelId }),
+      UserWiseSubscription.findOne({ channelId: channelId }),   // userId: userId, 
       UserWiseSubscription.countDocuments({ channelId: channelId }),
       Video.aggregate([
         {
@@ -1122,7 +1122,7 @@ exports.detailsOfChannel = async (req, res, next) => {
             from: "userwisesubscriptions",
             let: {
               channelId: "$channel.channelId",
-              userId: userId,
+              // userId: userId,
             },
             pipeline: [
               {
@@ -1130,7 +1130,7 @@ exports.detailsOfChannel = async (req, res, next) => {
                   $expr: {
                     $and: [
                       { $eq: ["$channelId", "$$channelId"] },
-                      { $eq: ["$userId", "$$userId"] },
+                      // { $eq: ["$userId", "$$userId"] },
                     ],
                   },
                 },
@@ -1150,14 +1150,14 @@ exports.detailsOfChannel = async (req, res, next) => {
         {
           $lookup: {
             from: "savetowatchlaters",
-            let: { videoId: "$_id", userId: userId },
+            let: { videoId: "$_id" },  // , userId: userId
             pipeline: [
               {
                 $match: {
                   $expr: {
                     $and: [
                       { $eq: ["$videoId", "$$videoId"] },
-                      { $eq: ["$userId", "$$userId"] },
+                      // { $eq: ["$userId", "$$userId"] },
                     ],
                   },
                 },
@@ -1204,17 +1204,17 @@ exports.detailsOfChannel = async (req, res, next) => {
         .json({ status: false, message: "channel does not found!" });
     }
 
-    if (!user) {
-      return res
-        .status(200)
-        .json({ status: false, message: "User does not found!" });
-    }
+    // if (!user) {
+    //   return res
+    //     .status(200)
+    //     .json({ status: false, message: "User does not found!" });
+    // }
 
-    if (user.isBlock) {
-      return res
-        .status(200)
-        .json({ status: false, message: "you are blocked by admin!" });
-    }
+    // if (user.isBlock) {
+    //   return res
+    //     .status(200)
+    //     .json({ status: false, message: "you are blocked by admin!" });
+    // }
 
     const [
       isSubscribed,
@@ -1435,7 +1435,7 @@ exports.videosOfChannel = async (req, res) => {
 exports.playListsOfChannel = async (req, res, next) => {
   try {
     if (
-      !req.query.userId ||
+      // !req.query.userId ||
       !req.query.channelId ||
       !req.query.start ||
       !req.query.limit
@@ -1447,10 +1447,10 @@ exports.playListsOfChannel = async (req, res, next) => {
 
     const start = req.query.start ? parseInt(req.query.start) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-    const userId = new mongoose.Types.ObjectId(req.query.userId);
+    // const userId = new mongoose.Types.ObjectId(req.query.userId);
 
-    const [user, channel, data] = await Promise.all([
-      User.findOne({ _id: userId, isActive: true }),
+    const [channel, data] = await Promise.all([   // user, 
+      // User.findOne({ _id: userId, isActive: true }),
       User.findOne({ channelId: req.query.channelId }),
       PlayList.aggregate([
         {
@@ -1485,7 +1485,7 @@ exports.playListsOfChannel = async (req, res, next) => {
             from: "userwisesubscriptions",
             let: {
               channelId: "$channel.channelId",
-              userId: userId,
+              // userId: userId,
             },
             pipeline: [
               {
@@ -1493,7 +1493,7 @@ exports.playListsOfChannel = async (req, res, next) => {
                   $expr: {
                     $and: [
                       { $eq: ["$channelId", "$$channelId"] },
-                      { $eq: ["$userId", "$$userId"] },
+                      // { $eq: ["$userId", "$$userId"] },
                     ],
                   },
                 },
@@ -1505,7 +1505,7 @@ exports.playListsOfChannel = async (req, res, next) => {
         {
           $project: {
             channelId: 1,
-            userId: 1,
+            // userId: 1,
             playListName: 1,
             playListType: 1,
             channelName: "$channel.fullName",
@@ -1527,7 +1527,7 @@ exports.playListsOfChannel = async (req, res, next) => {
           $group: {
             _id: "$_id",
             channelId: { $first: "$channelId" },
-            userId: { $first: "$userId" },
+            // userId: { $first: "$userId" },
             playListName: { $first: "$playListName" },
             playListType: { $first: "$playListType" },
             channelName: { $first: "$channelName" },
@@ -1553,17 +1553,17 @@ exports.playListsOfChannel = async (req, res, next) => {
       ]),
     ]);
 
-    if (!user) {
-      return res
-        .status(200)
-        .json({ status: false, message: "User does not found!" });
-    }
+    // if (!user) {
+    //   return res
+    //     .status(200)
+    //     .json({ status: false, message: "User does not found!" });
+    // }
 
-    if (user.isBlock) {
-      return res
-        .status(200)
-        .json({ status: false, message: "you are blocked by admin!" });
-    }
+    // if (user.isBlock) {
+    //   return res
+    //     .status(200)
+    //     .json({ status: false, message: "you are blocked by admin!" });
+    // }
 
     if (!channel) {
       return res
@@ -1624,7 +1624,7 @@ exports.aboutOfChannel = async (req, res) => {
 //search channel for user
 exports.searchChannel = async (req, res) => {
   try {
-    if (!req.body.searchString || !req.body.userId) {
+    if (!req.body.searchString ) {  // || !req.body.userId
       return res.status(200).json({
         status: false,
         message: "Oops ! Invalid details!",
@@ -1632,11 +1632,11 @@ exports.searchChannel = async (req, res) => {
     }
 
     const searchString = req.body.searchString.trim();
-    const userId = new mongoose.Types.ObjectId(req.body.userId);
+    // const userId = new mongoose.Types.ObjectId(req.body.userId);
 
-    const [channel, user, response] = await Promise.all([
+    const [channel, response] = await Promise.all([   // user, 
       User.find({ fullName: { $regex: searchString, $options: "i" } }),
-      User.findOne({ _id: userId, isActive: true }),
+      // User.findOne({ _id: userId, isActive: true }),
       User.aggregate([
         {
           $match: {
@@ -1649,7 +1649,7 @@ exports.searchChannel = async (req, res) => {
             from: "userwisesubscriptions",
             let: {
               channelId: "$channelId",
-              userId: userId,
+              // userId: userId,
             },
             pipeline: [
               {
@@ -1657,7 +1657,7 @@ exports.searchChannel = async (req, res) => {
                   $expr: {
                     $and: [
                       { $eq: ["$channelId", "$$channelId"] },
-                      { $eq: ["$userId", "$$userId"] },
+                      // { $eq: ["$userId", "$$userId"] },
                     ],
                   },
                 },
@@ -1713,17 +1713,17 @@ exports.searchChannel = async (req, res) => {
         .json({ status: false, message: "channel does not found!" });
     }
 
-    if (!user) {
-      return res
-        .status(200)
-        .json({ status: false, message: "user does not found!" });
-    }
+    // if (!user) {
+    //   return res
+    //     .status(200)
+    //     .json({ status: false, message: "user does not found!" });
+    // }
 
-    if (user.isBlock) {
-      return res
-        .status(200)
-        .json({ status: false, message: "you are blocked by admin!" });
-    }
+    // if (user.isBlock) {
+    //   return res
+    //     .status(200)
+    //     .json({ status: false, message: "you are blocked by admin!" });
+    // }
 
     return res
       .status(200)
