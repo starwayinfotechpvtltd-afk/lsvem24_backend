@@ -8,21 +8,26 @@ const cors = require("cors");
 
 const allowedOrigins = process.env.FRONTEND_URLS?.split(",");
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // allow requests without origin (Postman, mobile apps)
-      if (!origin) return callback(null, true);
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+//       // allow requests without origin (Postman, mobile apps)
+//       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  })
-);
+//       if (allowedOrigins.includes(origin)) {
+//         callback(null, true);
+//       } else {
+//         callback(new Error("Not allowed by CORS"));
+//       }
+//     },
+//     credentials: true,
+//   })
+// );
+
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
 // Razorpay webhook must use raw body for signature verification (before express.json)
 const { razorpayWebhook } = require("./controllers/client/paymentWebhook.controller");
@@ -42,8 +47,6 @@ app.post(
   },
   razorpayWebhook,
 );
-
-app.use(express.json());
 
 //logging middleware
 var logger = require("morgan");
@@ -127,7 +130,7 @@ db.once("open", async () => {
   app.use(express.static(path.join(__dirname, "public")));
   
   // ✅ FIX: This catch-all route should be LAST and should NOT catch API routes
-  app.get("/*", (req, res) => {
+  app.get("/", (req, res) => {
     // Check if it's an API route
     // if (req.path.startsWith('/api')) {
     //   return res.status(404).json({ status: false, message: 'API route not found' });
@@ -136,7 +139,7 @@ db.once("open", async () => {
     res.status(200).json({status: true, message: "Backend is running "})
   });
 
-  const PORT = process.env.PORT || 5003;
+  const PORT = process.env.PORT || 5001;
   server.listen(PORT, '0.0.0.0', () => {
     console.log("Hello World ! listening on " + PORT);
   });
