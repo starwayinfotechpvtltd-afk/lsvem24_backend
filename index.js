@@ -51,8 +51,8 @@ app.post(
 //logging middleware
 var logger = require("morgan");
 app.use(logger("dev"));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ limit: "500mb", extended: true }));
 
 //path
 const path = require("path");
