@@ -65,7 +65,7 @@ exports.createCoinPlanHistory = async (req, res) => {
     history.paymentGateway = paymentGateWay; //(razorPay or stripe)
     history.date = moment().toISOString();
 
-    const newCoinPlan = {
+    const newCoinPlan = { 
       amount: coinPlan.amount,
       coin: coinPlan.coin,
       extraCoin: coinPlan.extraCoin,
@@ -81,6 +81,8 @@ exports.createCoinPlanHistory = async (req, res) => {
           $inc: {
             coin: totalCoins,
             purchasedCoin: totalCoins,
+            totalPurchasedCoin: user.totalPurchasedCoin + totalCoins,
+            currentCoin: user.currentCoin + totalCoins
           },
           $push: {
             coinplan: newCoinPlan,

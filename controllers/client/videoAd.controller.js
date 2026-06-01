@@ -3,6 +3,81 @@ const VideoAd = require("../../models/videoAdvertise.model");
 const Zone = require("../../models/zone.model");
 const { resolveMatchingZones } = require("../../util/zoneResolver");
 const { optimizeAdMediaUrls } = require("../../util/optimizeUploadedMedia");
+const User = require("../../models/user.model");
+const {
+  calculateAdBudget,
+  getBudgetBreakdown,
+} = require("../../util/adBudgetCalculator");
+
+function parseDurationSeconds(body) {
+  const ms = parseInt(body.durationMs ?? body.videoTimeMs, 10);
+  if (!Number.isNaN(ms) && ms > 0) {
+    return Math.ceil(ms / 1000);
+  }
+  const raw = parseInt(
+    body.durationSeconds ?? body.duration ?? body.videoTime,
+    10,
+  );
+  if (Number.isNaN(raw) || raw <= 0) return 0;
+  if (raw > 3600) return Math.ceil(raw / 1000);
+  return raw;
+}
+
+function resolvePlacement(placement) {
+  const p = String(placement || "pre-roll").toLowerCase();
+  return ["pre-roll", "mid-roll", "both"].includes(p) ? p : "pre-roll";
+}
+
+const calculateBudget = async (req, res) => {
+  try {
+    const { userId, fileSizeMB, type, placement, mediaType } = req.body;
+
+    if (!userId) {
+      return res.status(200).json({
+        status: false,
+        message: "userId is required",
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(200).json({
+        status: false,
+        message: "User not found",
+      });
+    }
+
+    const durationSeconds = parseDurationSeconds(req.body);
+    const hasVideo = String(mediaType || "").toLowerCase() === "video";
+    const breakdown = getBudgetBreakdown({
+      fileSizeMB: Number(fileSizeMB) || 0,
+      durationSeconds,
+      adType: type || "skippable",
+      placement: resolvePlacement(placement),
+      mediaType: hasVideo ? "video" : "image",
+    });
+
+    const currentCoin = user.currentCoin ?? 0;
+    const purchasedCoin = user.purchasedCoin ?? 0;
+
+    return res.status(200).json({
+      status: true,
+      budget: breakdown.budget,
+      breakdown,
+      currentCoin: currentCoin,
+      purchasedCoin,
+      canUpload: currentCoin >= breakdown.budget,
+    });
+  } catch (e) {
+    return res.status(500).json({
+      status: false,
+      message: e.message,
+    });
+  }
+};
+
+
 
 const uploadVideoAd = async (req, res) => {
   try {
@@ -17,10 +92,10 @@ const uploadVideoAd = async (req, res) => {
       targetTags,
       zones,
       country,
+      budget,
       state,
       city,
       category,
-      budget,
       video,
       image,
       adRuns,
@@ -29,17 +104,19 @@ const uploadVideoAd = async (req, res) => {
 
     const { userId } = req.query;
 
-    if (!userId) {
+    const user = await User.findById(userId);
+
+    if (!user) {
       return res.status(200).json({
         status: false,
-        message: "userId is required.",
+        message: "User not found.",
       });
     }
 
     if (!video && !image) {
       return res.status(200).json({
         status: false,
-        message: "Video or image is required.",
+        message: "Please upload image or video.",
       });
     }
 
@@ -80,6 +157,34 @@ const uploadVideoAd = async (req, res) => {
         adRuns: runs,
       });
 
+    const durationSeconds = parseDurationSeconds(req.body);
+    const placementValue = resolvePlacement(placement);
+    const fileSizeMB = Number(req.body.fileSizeMB) || 0;
+    const mediaType = video ? "video" : "image";
+
+    const calculatedBudget = calculateAdBudget({
+      fileSizeMB,
+      durationSeconds,
+      adType: type || "skippable",
+      placement: placementValue,
+      mediaType,
+    });
+
+    const budgetToCharge = calculatedBudget;
+
+    const currentCoin = user.currentCoin ?? 0;
+
+    if (budgetToCharge > currentCoin) {
+      return res.status(200).json({
+        status: false,
+        message: "Insufficient coins. Ad budget exceeds your coin balance.",
+        budget: budgetToCharge,
+        currentCoin: currentCoin,
+        purchasedCoin: user.purchasedCoin ?? 0,
+      });
+    }
+
+  
     const ad = await VideoAd.create({
       video: optimizedVideo || null,
       image: optimizedImage || null,
@@ -96,14 +201,15 @@ const uploadVideoAd = async (req, res) => {
       state,
       city,
       category,
-      budget,
+      budget: budgetToCharge,
       userId,
       adRuns: runs,
-      placement:
-        placement && ["pre-roll", "mid-roll", "both"].includes(placement)
-          ? placement
-          : "pre-roll",
+      placement: placementValue,
     });
+
+    user.currentCoin = currentCoin - budgetToCharge;
+    user.usedForAdsCoin = (user.usedForAdsCoin ?? 0) + budgetToCharge;
+    await user.save();
 
     return res.status(200).json({
       status: true,
@@ -299,6 +405,7 @@ const getShortsFeedAds = async (req, res) => {
 
 module.exports = {
   uploadVideoAd,
+  calculateBudget,
   getAllVideoAd,
   videoAdById,
   getAdsByLocation,

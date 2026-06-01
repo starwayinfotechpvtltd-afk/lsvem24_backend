@@ -15,7 +15,7 @@ const VideoAdSchema = new mongoose.Schema(
       default: "skippable",
     },
     category: { type: String, trim: true },
-    budget: { type: String, trim: true },
+    budget: { type: Number, trim: true },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     uniqueAdsId: { type: String, default: null },
 

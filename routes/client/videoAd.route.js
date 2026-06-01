@@ -1,6 +1,7 @@
 const express = require("express");
 const {
   uploadVideoAd,
+  calculateBudget,
   getAllVideoAd,
   videoAdById,
   getAdsByLocation,
@@ -14,6 +15,7 @@ const videoAd = express.Router();
 
 // JSON body: { image, video } URLs after client compress + file upload
 videoAd.post("/uploadAd", uploadVideoAd);
+videoAd.post("/calculateBudget", calculateBudget);
 videoAd.get("/getAllVideoAd", getAllVideoAd);
 videoAd.get("/videoAdById/:id", videoAdById); // Changed to GET with param
 

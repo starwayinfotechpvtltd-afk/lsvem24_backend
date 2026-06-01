@@ -49,9 +49,21 @@ const userSchema = new mongoose.Schema(
         amount: { type: Number, default: 0 },
         coin: { type: Number, default: 0 },
         extraCoin: { type: Number, default: 0 },
-        purchasedAt: { type: Date, default: Date.now },
+        purchasedAt: { type: Date, default: Date.now }, 
       },
     ],
+    currentCoin: {
+      type: Number,
+      default: 0
+    },
+    usedForAdsCoin: {
+      type: Number,
+      default: 0,
+    },
+    totalPurchasedCoin: {
+      type: Number,
+      default: 0,
+    },
 
     isAddByAdmin: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
