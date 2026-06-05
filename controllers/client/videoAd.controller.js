@@ -185,13 +185,18 @@ const uploadVideoAd = async (req, res) => {
     }
 
   
+    const adDuration =
+      parseDurationSeconds(req.body) ||
+      parseInt(duration, 10) ||
+      undefined;
+
     const ad = await VideoAd.create({
       video: optimizedVideo || null,
       image: optimizedImage || null,
       title,
       description,
       type: type || "skippable",
-      duration,
+      duration: adDuration,
       skipAfter: skipAfter || 5,
       ctaText,
       ctaLink,
@@ -383,7 +388,9 @@ const getShortsFeedAds = async (req, res) => {
         },
       ],
     })
-      .select("video image title description ctaText ctaLink type adRuns")
+      .select(
+        "video image title description ctaText ctaLink type adRuns skipAfter duration",
+      )
       .lean();
 
     const playable = ads.filter(
