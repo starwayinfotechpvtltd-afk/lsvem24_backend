@@ -1,9 +1,9 @@
 const getActiveStorage = async () => {
   const settings = settingJSON; // Replace this with actual settings loading logic if necessary
 
-  if (settings.storage.local) return "local";
-  if (settings.storage.awsS3) return "aws";
-  if (settings.storage.digitalOcean) return "digitalocean";
+  if (settings?.storage?.local) return "local";
+  if (settings?.storage?.awsS3) return "aws";  
+  if (settings?.storage?.digitalOcean) return "digitalocean";
 
   return "local"; // Fallback to local storage if no active storage is found
 };

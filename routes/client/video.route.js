@@ -45,6 +45,12 @@ route.post(
   videoController.shareCount,
 );
 
+route.post(
+  "/view",
+  checkAccessWithSecretKey(),
+  videoController.addView,
+);
+
 //get shorts from home page directly
 route.get(
   "/shortsOfUser",

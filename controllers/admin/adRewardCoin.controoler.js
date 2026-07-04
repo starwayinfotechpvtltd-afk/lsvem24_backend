@@ -66,6 +66,7 @@ exports.updateAdReward = async (req, res) => {
 exports.getAdReward = async (req, res) => {
   try {
     const adReward = await AdRewardCoin.find().sort({ coinEarnedFromAd: 1 });
+    console.log("Get ad reword called")
 
     return res.status(200).json({
       status: true,

@@ -177,7 +177,6 @@ exports.createVideo = async (req, res) => {
     }
 
     const videoTimeMs = parseInt(req.body.videoTime, 10) || 0;
-
     // Validate schedule type
     if (req.body.scheduleType == 1 && !req.body.scheduleTime) {
       if (req.body.videoImage) await deleteFromStorage(req.body.videoImage);
@@ -416,6 +415,45 @@ exports.shareCount = async (req, res) => {
   }
 };
 
+exports.addView = async (req, res) => {
+  try {
+    console.log("Add view called")
+    const { videoId, userId } = req.query;
+
+    console.log("VideoId =>", videoId);
+    console.log("UserId =>", userId);
+
+    const video = await Video.findById(videoId);
+
+    if (!video) {
+      return res.status(404).json({
+        success: false,
+        message: "Video not found",
+      });
+    }
+
+    const alreadyViewed = video.viewedUsers?.some(
+      (id) => id.toString() === userId
+    );
+
+    if (!alreadyViewed) {
+      video.views += 1;
+      video.viewedUsers.push(userId);
+      await video.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      views: video.views,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 //get shorts from home page directly
 exports.shortsOfUser = async (req, res) => {
   try {
@@ -520,20 +558,20 @@ exports.shortsOfUser = async (req, res) => {
           preserveNullAndEmptyArrays: true, //return empty values
         },
       },
-      {
-        $lookup: {
-          from: "watchhistories",
-          let: { videoId: "$_id" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$videoId", "$$videoId"] },
-              },
-            },
-          ],
-          as: "views",
-        },
-      },
+      // {
+      //   $lookup: {
+      //     from: "watchhistories",
+      //     let: { videoId: "$_id" },
+      //     pipeline: [
+      //       {
+      //         $match: {
+      //           $expr: { $eq: ["$videoId", "$$videoId"] },
+      //         },
+      //       },
+      //     ],
+      //     as: "views",
+      //   },
+      // },
       {
         $project: {
           like: 1,
@@ -565,7 +603,7 @@ exports.shortsOfUser = async (req, res) => {
           isDislike: {
             $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
           },
-          views: { $size: "$views" },
+          views: 1,
         },
       },
       { $skip: (start - 1) * limit },
@@ -693,20 +731,20 @@ exports.getShorts = async (req, res) => {
             preserveNullAndEmptyArrays: true, //return empty values
           },
         },
-        {
-          $lookup: {
-            from: "watchhistories",
-            let: { videoId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ["$videoId", "$$videoId"] },
-                },
-              },
-            ],
-            as: "views",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "watchhistories",
+        //     let: { videoId: "$_id" },
+        //     pipeline: [
+        //       {
+        //         $match: {
+        //           $expr: { $eq: ["$videoId", "$$videoId"] },
+        //         },
+        //       },
+        //     ],
+        //     as: "views",
+        //   },
+        // },
         {
           $lookup: {
             from: "savetowatchlaters",
@@ -758,7 +796,7 @@ exports.getShorts = async (req, res) => {
             isDislike: {
               $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
             },
-            views: { $size: "$views" },
+            views: 1,
           },
         },
         { $skip: (start - 1) * limit },
@@ -970,12 +1008,8 @@ exports.getVideos = async (req, res) => {
     const start = req.query.start ? parseInt(req.query.start) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
 
-    // if (!req.query.userId) {
-    //   return res.status(200).json({ status: false, message: "Oops ! Invalid details." });
-    // }
 
     const now = new Date(); // ✅ Use native Date
-    // const userId = new mongoose.Types.ObjectId(req.query.userId);
 
     const [videos] = await Promise.all([ // user, 
       // User.findOne({ _id: userId, isActive: true }),
@@ -1002,20 +1036,20 @@ exports.getVideos = async (req, res) => {
             preserveNullAndEmptyArrays: true,
           },
         },
-        {
-          $lookup: {
-            from: "watchhistories",
-            let: { videoId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ["$videoId", "$$videoId"] },
-                },
-              },
-            ],
-            as: "views",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "watchhistories",
+        //     let: { videoId: "$_id" },
+        //     pipeline: [
+        //       {
+        //         $match: {
+        //           $expr: { $eq: ["$videoId", "$$videoId"] },
+        //         },
+        //       },
+        //     ],
+        //     as: "views",
+        //   },
+        // },
         {
           $lookup: {
             from: "savetowatchlaters",
@@ -1070,7 +1104,7 @@ exports.getVideos = async (req, res) => {
             // userId: 1,
             channelId: 1,
             videoPrivacyType: 1,
-            views: { $size: "$views" },
+            views: 1,
             channelType: "$channel.channelType",
             subscriptionCost: "$channel.subscriptionCost",
             videoUnlockCost: "$channel.videoUnlockCost",
@@ -1170,6 +1204,7 @@ exports.getVideos = async (req, res) => {
         { $limit: limit },                 // ✅ Correct order
       ]),
     ]);
+    console.log("Video data: ", videos)
 
     // if (!user) {
     //   return res.status(200).json({ status: false, message: "User does not found." });
@@ -1338,20 +1373,20 @@ exports.videosOfHome = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -1381,7 +1416,7 @@ exports.videosOfHome = async (req, res) => {
               videoPrivacyType: 1,
               // userId: 1, //videoUserId
               channelId: 1, //videoChannelId
-              views: { $size: "$views" },
+              views: 1,
               channelType: "$channel.channelType",
               subscriptionCost: "$channel.subscriptionCost",
               videoUnlockCost: "$channel.videoUnlockCost",
@@ -1528,20 +1563,20 @@ exports.videosOfHome = async (req, res) => {
               preserveNullAndEmptyArrays: true, //return empty values
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -1593,7 +1628,7 @@ exports.videosOfHome = async (req, res) => {
               isDislike: {
                 $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
               },
-              views: { $size: "$views" },
+              views: 1,
             },
           },
           { $skip: (start - 1) * limit },
@@ -1663,20 +1698,20 @@ exports.videosOfHome = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -1706,7 +1741,7 @@ exports.videosOfHome = async (req, res) => {
               // userId: 1, //videoUserId
               channelId: 1, //videoChannelId
               videoPrivacyType: 1,
-              views: { $size: "$views" },
+              views: 1,
               channelType: "$channel.channelType",
               subscriptionCost: "$channel.subscriptionCost",
               videoUnlockCost: "$channel.videoUnlockCost",
@@ -1853,20 +1888,20 @@ exports.videosOfHome = async (req, res) => {
               preserveNullAndEmptyArrays: true, //return empty values
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -1918,7 +1953,7 @@ exports.videosOfHome = async (req, res) => {
               isDislike: {
                 $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
               },
-              views: { $size: "$views" },
+              views: 1,
             },
           },
           { $sort: { views: -1 } },
@@ -1988,20 +2023,20 @@ exports.videosOfHome = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -2032,7 +2067,7 @@ exports.videosOfHome = async (req, res) => {
               // userId: 1, //videoUserId
               channelId: 1, //videoChannelId
               createdAt: 1,
-              views: { $size: "$views" },
+              views: 1,
               channelType: "$channel.channelType",
               subscriptionCost: "$channel.subscriptionCost",
               videoUnlockCost: "$channel.videoUnlockCost",
@@ -2179,20 +2214,20 @@ exports.videosOfHome = async (req, res) => {
               preserveNullAndEmptyArrays: true, //return empty values
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -2244,7 +2279,7 @@ exports.videosOfHome = async (req, res) => {
               isDislike: {
                 $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
               },
-              views: { $size: "$views" },
+              views: 1,
             },
           },
           { $sort: { createdAt: -1 } },
@@ -2422,14 +2457,14 @@ exports.detailsOfVideo = async (req, res) => {
             as: "isSubscribed",
           },
         },
-        {
-          $lookup: {
-            from: "watchhistories",
-            localField: "_id",
-            foreignField: "videoId",
-            as: "views",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "watchhistories",
+        //     localField: "_id",
+        //     foreignField: "videoId",
+        //     as: "views",
+        //   },
+        // },
         {
           $lookup: {
             from: "likehistoryofvideos",
@@ -2496,7 +2531,7 @@ exports.detailsOfVideo = async (req, res) => {
             channelImage: "$channel.image",
             totalComments: { $size: "$totalComments" },
             totalSubscribers: { $size: "$totalSubscribers" },
-            views: { $size: "$views" },
+            views: 1,
             isSubscribed: {
               $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
             },
@@ -3043,20 +3078,20 @@ exports.search = async (req, res) => {
             as: "isSubscribed",
           },
         },
-        {
-          $lookup: {
-            from: "watchhistories",
-            let: { videoId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ["$videoId", "$$videoId"] },
-                },
-              },
-            ],
-            as: "views",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "watchhistories",
+        //     let: { videoId: "$_id" },
+        //     pipeline: [
+        //       {
+        //         $match: {
+        //           $expr: { $eq: ["$videoId", "$$videoId"] },
+        //         },
+        //       },
+        //     ],
+        //     as: "views",
+        //   },
+        // },
         {
           $lookup: {
             from: "savetowatchlaters",
@@ -3095,7 +3130,7 @@ exports.search = async (req, res) => {
             isSaveToWatchLater: {
               $cond: [{ $eq: [{ $size: "$isSaveToWatchLater" }, 0] }, false, true],
             },
-            views: { $size: "$views" },
+            views: 1,
             time: {
               $let: {
                 vars: {
@@ -3262,20 +3297,20 @@ exports.searchShorts = async (req, res) => {
             as: "isSubscribed",
           },
         },
-        {
-          $lookup: {
-            from: "watchhistories",
-            let: { videoId: "$_id" },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ["$videoId", "$$videoId"] },
-                },
-              },
-            ],
-            as: "views",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "watchhistories",
+        //     let: { videoId: "$_id" },
+        //     pipeline: [
+        //       {
+        //         $match: {
+        //           $expr: { $eq: ["$videoId", "$$videoId"] },
+        //         },
+        //       },
+        //     ],
+        //     as: "views",
+        //   },
+        // },
         {
           $lookup: {
             from: "savetowatchlaters",
@@ -3310,7 +3345,7 @@ exports.searchShorts = async (req, res) => {
             isSubscribed: {
               $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
             },
-            views: { $size: "$views" },
+            views: 1,
             isSaveToWatchLater: {
               $cond: [{ $eq: [{ $size: "$isSaveToWatchLater" }, 0] }, false, true],
             },
@@ -3505,20 +3540,20 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -3557,7 +3592,7 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               isSaveToWatchLater: {
                 $cond: [{ $eq: [{ $size: "$isSaveToWatchLater" }, 0] }, false, true],
               },
-              views: { $size: "$views" },
+              views: 1,
               time: {
                 $let: {
                   vars: {
@@ -3647,20 +3682,20 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -3699,7 +3734,7 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               isSaveToWatchLater: {
                 $cond: [{ $eq: [{ $size: "$isSaveToWatchLater" }, 0] }, false, true],
               },
-              views: { $size: "$views" },
+              views: 1,
               time: {
                 $let: {
                   vars: {
@@ -3819,20 +3854,20 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -3867,7 +3902,7 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               isSubscribed: {
                 $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
               },
-              views: { $size: "$views" },
+              views: 1,
               isSaveToWatchLater: {
                 $cond: [{ $eq: [{ $size: "$isSaveToWatchLater" }, 0] }, false, true],
               },
@@ -3982,20 +4017,20 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               as: "isSubscribed",
             },
           },
-          {
-            $lookup: {
-              from: "watchhistories",
-              let: { videoId: "$_id" },
-              pipeline: [
-                {
-                  $match: {
-                    $expr: { $eq: ["$videoId", "$$videoId"] },
-                  },
-                },
-              ],
-              as: "views",
-            },
-          },
+          // {
+          //   $lookup: {
+          //     from: "watchhistories",
+          //     let: { videoId: "$_id" },
+          //     pipeline: [
+          //       {
+          //         $match: {
+          //           $expr: { $eq: ["$videoId", "$$videoId"] },
+          //         },
+          //       },
+          //     ],
+          //     as: "views",
+          //   },
+          // },
           {
             $lookup: {
               from: "savetowatchlaters",
@@ -4030,7 +4065,7 @@ exports.searchChannelVideoShortsByUser = async (req, res) => {
               isSubscribed: {
                 $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
               },
-              views: { $size: "$views" },
+              views: 1, // { $size: "$views" }
               isSaveToWatchLater: {
                 $cond: [{ $eq: [{ $size: "$isSaveToWatchLater" }, 0] }, false, true],
               },

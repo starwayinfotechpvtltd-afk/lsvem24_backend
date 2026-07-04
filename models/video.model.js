@@ -12,7 +12,7 @@ const videoSchema = new mongoose.Schema(
     uniqueVideoId: { type: String, default: null },
     title: { type: String },
     description: { type: String },
-    hashTag: [{ type: String }], 
+    hashTag: [{ type: String }],
     videoType: { type: Number, enum: VIDEO_TYPE },
     videoPrivacyType: { type: Number, enum: VIDEO_PRIVACY_TYPE }, //1.free 2.paid
     videoTime: { type: Number, min: 0 }, //that value always save in millisecond
@@ -29,14 +29,28 @@ const videoSchema = new mongoose.Schema(
       longitude: { type: String },
     },
 
-    soundListId: { type: mongoose.Schema.Types.ObjectId, ref: "SoundList", default: null },
+    soundListId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SoundList",
+      default: null,
+    },
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
     channelId: { type: String, trim: true },
 
     isActive: { type: Boolean, default: true },
     isAddByAdmin: { type: Boolean, default: false },
+    views: {
+      type: Number,
+      default: 0,
+    },
 
+    viewedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
     shareCount: { type: Number, default: 0 }, //when user share the video then shareCount increased
     like: { type: Number, default: 0 },
     dislike: { type: Number, default: 0 },
@@ -44,7 +58,7 @@ const videoSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 videoSchema.index({ uniqueVideoId: 1 });

@@ -91,6 +91,7 @@ async function initializeSettings() {
     if (setting) {
       console.log("In setting initialize Settings");
       global.settingJSON = setting;
+      console.log("Setting initilized")
     } else {
       global.settingJSON = {}; //settingJson
     }

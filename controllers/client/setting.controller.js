@@ -15,6 +15,9 @@ exports.get = async (req, res) => {
       global.settingJSON ? global.settingJSON : null,
     ]);
 
+    console.log("Advertise: ", advertise)
+    console.log("Settings", setting)
+
     if (!setting) {
       return res.status(200).json({ status: false, message: "Setting does not found." });
     }

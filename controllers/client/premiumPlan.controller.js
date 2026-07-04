@@ -14,44 +14,66 @@ const mongoose = require("mongoose");
 //get all premiumPlan for user (isActive)
 exports.index = async (req, res) => {
   try {
-    const premiumPlan = await PremiumPlan.find({ isActive: true }).sort({ validityType: 1, validity: 1 });
+    const premiumPlan = await PremiumPlan.find({ isActive: true }).sort({
+      validityType: 1,
+      validity: 1,
+    });
 
-    return res.status(200).json({ status: true, message: "Success", premiumPlan });
+    return res
+      .status(200)
+      .json({ status: true, message: "Success", premiumPlan });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+    return res
+      .status(500)
+      .json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
 
 //when user purchase the premiumPlan create premiumPlan history by user
 exports.createHistory = async (req, res) => {
   try {
-    if (!req.body.userId || !req.body.premiumPlanId || !req.body.paymentGateway) {
+    if (
+      !req.body.userId ||
+      !req.body.premiumPlanId ||
+      !req.body.paymentGateway
+    ) {
       return res.json({ status: false, message: "Oops ! Invalid details." });
     }
 
-    const [user, premiumPlan] = await Promise.all([User.findOne({ _id: req.body.userId, isActive: true }), PremiumPlan.findById(req.body.premiumPlanId)]);
+    const [user, premiumPlan] = await Promise.all([
+      User.findOne({ _id: req.body.userId, isActive: true }),
+      PremiumPlan.findById(req.body.premiumPlanId),
+    ]);
 
     if (!user) {
-      return res.status(200).json({ status: false, message: "user does not found." });
+      return res
+        .status(200)
+        .json({ status: false, message: "user does not found." });
     }
 
     if (user.isBlock) {
-      return res.status(200).json({ status: false, message: "you are blocked by admin!" });
+      return res
+        .status(200)
+        .json({ status: false, message: "you are blocked by admin!" });
     }
 
     if (!premiumPlan) {
-      return res.status(200).json({ status: false, message: "PremiumPlan does not found." });
+      return res
+        .status(200)
+        .json({ status: false, message: "PremiumPlan does not found." });
     }
 
     const currentDate = new Date();
 
     let planEndDate = new Date(currentDate);
 
-    if (premiumPlan.validityType === "month") {
-      planEndDate.setMonth(currentDate.getMonth() + premiumPlan.validity);
+    if (premiumPlan.validityType === "day") {
+      planEndDate.setDate(planEndDate.getDate() + premiumPlan.validity);
+    } else if (premiumPlan.validityType === "month") {
+      planEndDate.setDate(planEndDate.getDate() + premiumPlan.validity * 30);
     } else if (premiumPlan.validityType === "year") {
-      planEndDate.setFullYear(currentDate.getFullYear() + premiumPlan.validity);  
+      planEndDate.setFullYear(planEndDate.getFullYear() + premiumPlan.validity);
     }
 
     user.isPremiumPlan = true;
@@ -74,12 +96,15 @@ exports.createHistory = async (req, res) => {
 
     return res.status(200).json({
       status: true,
-      message: "When user purchase the premiumPlan created premiumPlan history!",
+      message:
+        "When user purchase the premiumPlan created premiumPlan history!",
       history: history,
     });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+    return res
+      .status(500)
+      .json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
 
@@ -87,7 +112,9 @@ exports.createHistory = async (req, res) => {
 exports.planHistoryOfUser = async (req, res) => {
   try {
     if (!req.query.userId) {
-      return res.status(200).json({ status: false, message: "userId must be required." });
+      return res
+        .status(200)
+        .json({ status: false, message: "userId must be required." });
     }
 
     const [user, history] = await Promise.all([
@@ -130,17 +157,25 @@ exports.planHistoryOfUser = async (req, res) => {
     ]);
 
     if (!user) {
-      return res.status(200).json({ status: false, message: "User not found." });
+      return res
+        .status(200)
+        .json({ status: false, message: "User not found." });
     }
 
     if (user.isBlock) {
-      return res.status(200).json({ status: false, message: "You are blocked by the admin." });
+      return res
+        .status(200)
+        .json({ status: false, message: "You are blocked by the admin." });
     }
 
-    return res.status(200).json({ status: true, message: "Success", planHistory: history });
+    return res
+      .status(200)
+      .json({ status: true, message: "Success", planHistory: history });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+    return res
+      .status(500)
+      .json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
 
@@ -148,7 +183,9 @@ exports.planHistoryOfUser = async (req, res) => {
 exports.fetchCoinplanHistoryOfUser = async (req, res) => {
   try {
     if (!req.query.startDate || !req.query.endDate || !req.query.userId) {
-      return res.status(200).json({ status: false, message: "Oops ! Invalid details!" });
+      return res
+        .status(200)
+        .json({ status: false, message: "Oops ! Invalid details!" });
     }
 
     const userId = new mongoose.Types.ObjectId(req.query.userId);
@@ -197,16 +234,28 @@ exports.fetchCoinplanHistoryOfUser = async (req, res) => {
     ]);
 
     if (!user) {
-      return res.status(200).json({ status: false, message: "User not found." });
+      return res
+        .status(200)
+        .json({ status: false, message: "User not found." });
     }
 
     if (user.isBlock) {
-      return res.status(200).json({ status: false, message: "You are blocked by the admin." });
+      return res
+        .status(200)
+        .json({ status: false, message: "You are blocked by the admin." });
     }
 
-    return res.status(200).json({ status: true, message: "Retrieve all histories.", data: history });
+    return res
+      .status(200)
+      .json({
+        status: true,
+        message: "Retrieve all histories.",
+        data: history,
+      });
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ status: false, message: "Internal server error" });
   }
 };

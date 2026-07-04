@@ -21,11 +21,14 @@ exports.getDailyRewardCoinByUser = async (req, res) => {
       return res.status(200).json({ status: false, message: "Oops ! Invalid details!" });
     }
 
+    console.log("Daily reword called.", req.query.userId)
+
     const userId = new mongoose.Types.ObjectId(req.query.userId);
 
     const [user, userCheckIn, dailyRewards] = await Promise.all([User.findOne({ _id: userId, isActive: true }), CheckIn.findOne({ userId: userId }), DailyRewardCoin.find({}).sort({ day: 1 })]);
 
     console.log("------ userCheckIn ------", userCheckIn);
+    console.log("Daily reword", dailyRewards)
 
     const checkInStatus = dailyRewards.map((rewardDay) => {
       const userReward = userCheckIn ? userCheckIn.rewardsCollected.find((checkIn) => checkIn.day === rewardDay.day) : null;

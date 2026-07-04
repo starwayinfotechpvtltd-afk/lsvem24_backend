@@ -10,6 +10,8 @@ exports.getAdRewardByUser = async (req, res) => {
       return res.status(200).json({ status: false, message: "Oops! Invalid details!" });
     }
 
+    console.log("Get reword by user called")
+
     const userId = new mongoose.Types.ObjectId(req.query.userId);
     const [user, adReward] = await Promise.all([User.findOne({ _id: userId, isActive: true }), AdRewardCoin.find().sort({ coinEarnedFromAd: 1 })]);
 

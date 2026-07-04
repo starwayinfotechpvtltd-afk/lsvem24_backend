@@ -29,6 +29,7 @@ const WalletHistory = require("../../models/walletHistory.model");
 const VideoWatchReward = require("../../models/videoWatchReward.model");
 const CheckIn = require("../../models/checkIn.model");
 const CoinPlanHistory = require("../../models/coinplanHistory.model");
+const checkPremiumExpiry = require("../../util/checkPremiumExpiry");
 
 //mongoose
 const mongoose = require("mongoose");
@@ -168,6 +169,9 @@ exports.store = async (req, res) => {
     }
 
     const user = userQuery;
+    if (user) {
+      await checkPremiumExpiry(user);
+    }
     console.log("exist user:    ", user);
 
     if (user) {
@@ -224,6 +228,12 @@ exports.store = async (req, res) => {
         signUp: true,
       });
 
+      console.log(
+        "settingJSON.loginRewardCoins =",
+        settingJSON.loginRewardCoins,
+      );
+      console.log("bonusCoins =", bonusCoins);
+      console.log("typeof bonusCoins =", typeof bonusCoins);
       try {
         const uniqueId = await generateHistoryUniqueId();
 
@@ -238,6 +248,7 @@ exports.store = async (req, res) => {
         });
 
         if (user.fcmToken && user.fcmToken !== null) {
+          const adminPromise = await admin;
           const payload = {
             token: user.fcmToken,
             notification: {
@@ -300,6 +311,7 @@ exports.checkUser = async (req, res) => {
       email: req.body.email.trim().toLowerCase(), // ✅ Add toLowerCase for consistency
       loginType: 4, // Email/Password login
     });
+    await checkPremiumExpiry(user);
 
     console.log("🔍 User found:", !!user);
 
@@ -382,30 +394,24 @@ exports.validateAndApplyReferralCode = async (req, res) => {
     }
 
     if (user.isBlock) {
-      return res
-        .status(200)
-        .json({
-          status: false,
-          message: "Your account has been blocked by the administrator.",
-        });
+      return res.status(200).json({
+        status: false,
+        message: "Your account has been blocked by the administrator.",
+      });
     }
 
     if (user.referralCode === referralCode.trim()) {
-      return res
-        .status(200)
-        .json({
-          status: false,
-          message: "You cannot use your own referral code.",
-        });
+      return res.status(200).json({
+        status: false,
+        message: "You cannot use your own referral code.",
+      });
     }
 
     if (!referralCodeUser) {
-      return res
-        .status(200)
-        .json({
-          status: false,
-          message: "Invalid referral code. The referred user does not exist.",
-        });
+      return res.status(200).json({
+        status: false,
+        message: "Invalid referral code. The referred user does not exist.",
+      });
     }
 
     if (!user.isReferral) {
@@ -443,12 +449,10 @@ exports.validateAndApplyReferralCode = async (req, res) => {
           }).save(),
         ]);
     } else {
-      return res
-        .status(200)
-        .json({
-          status: false,
-          message: "Referral code has already been used by this user.",
-        });
+      return res.status(200).json({
+        status: false,
+        message: "Referral code has already been used by this user.",
+      });
     }
   } catch (error) {
     console.log(error);
@@ -466,6 +470,8 @@ exports.handleAdWatchReward = async (req, res) => {
         .status(200)
         .json({ status: false, message: "Oops ! Invalid details!" });
     }
+
+    console.log("Handle ad watch reword called")
 
     const coinEarnedFromAd = parseInt(req.query.coinEarnedFromAd);
 
@@ -525,13 +531,11 @@ exports.handleAdWatchReward = async (req, res) => {
 
     console.log("updatedReceiver", updatedReceiver.coin);
 
-    return res
-      .status(200)
-      .json({
-        status: true,
-        message: "Coin earned successfully.",
-        data: updatedReceiver,
-      });
+    return res.status(200).json({
+      status: true,
+      message: "Coin earned successfully.",
+      data: updatedReceiver,
+    });
   } catch (error) {
     console.log(error);
     return res
@@ -549,10 +553,33 @@ exports.handleEngagementVideoWatchReward = async (req, res) => {
         .json({ status: false, message: "Oops ! Invalid details!" });
     }
 
-    const coinEarned = parseInt(settingJSON.watchingVideoRewardCoins);
+    const coinEarned = Number(settingJSON?.watchingVideoRewardCoins || 0);
+
+    if (!Number.isFinite(coinEarned)) {
+      return res.status(200).json({
+        status: false,
+        message: "Invalid watchingVideoRewardCoins setting",
+      });
+    }
     console.log("coinEarned ", coinEarned);
 
     const totalWatchTime = Number(req.query.totalWatchTime);
+    if (!Number.isFinite(totalWatchTime) || totalWatchTime <= 0) {
+      return res.status(200).json({
+        status: false,
+        message: "Invalid watch time!",
+      });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(req.query.userId) ||
+      !mongoose.Types.ObjectId.isValid(req.query.videoId)
+    ) {
+      return res.status(200).json({
+        status: false,
+        message: "Invalid userId or videoId",
+      });
+    }
 
     const userId = new mongoose.Types.ObjectId(req.query.userId);
     const videoId = new mongoose.Types.ObjectId(req.query.videoId);
@@ -580,43 +607,53 @@ exports.handleEngagementVideoWatchReward = async (req, res) => {
     }
 
     if (alreadyVideoWatchReward) {
-      return res
-        .status(200)
-        .json({ status: true, message: "Reward already earned by that user!" });
-    } else {
-      res
-        .status(200)
-        .json({ status: true, message: "Coin earned successfully." });
-
-      const [videoWatchRewardHistory, updatedUser, historyEntry] =
-        await Promise.all([
-          VideoWatchReward.create({
-            userId: userId,
-            videoId: videoId,
-            videoUserId: video?.userId,
-            videoChannelId: video?.channelId,
-            totalWatchTime: totalWatchTime,
-          }),
-          User.findOneAndUpdate(
-            { _id: user._id },
-            {
-              $inc: {
-                coin: coinEarned,
-              },
-            },
-            { new: true },
-          ),
-          History({
-            userId: user._id,
-            uniqueId: uniqueId,
-            coin: coinEarned,
-            type: 5,
-            date: new Date().toLocaleString("en-US", {
-              timeZone: "Asia/Kolkata",
-            }),
-          }).save(),
-        ]);
+      return res.status(200).json({
+        status: true,
+        message: "Reward already earned by that user!",
+      });
     }
+
+    if (!video) {
+      return res.status(200).json({
+        status: false,
+        message: "Video not found!",
+      });
+    }
+
+    await Promise.all([
+      VideoWatchReward.create({
+        userId,
+        videoId,
+        videoUserId: video.userId,
+        videoChannelId: video.channelId,
+        totalWatchTime,
+      }),
+
+      User.findOneAndUpdate(
+        { _id: user._id },
+        {
+          $inc: {
+            coin: coinEarned,
+          },
+        },
+        { new: true },
+      ),
+
+      History.create({
+        userId: user._id,
+        uniqueId,
+        coin: coinEarned,
+        type: 5,
+        date: new Date().toLocaleString("en-US", {
+          timeZone: "Asia/Kolkata",
+        }),
+      }),
+    ]);
+
+    return res.status(200).json({
+      status: true,
+      message: "Coin earned successfully.",
+    });
   } catch (error) {
     console.log(error);
     return res
@@ -650,13 +687,11 @@ exports.update = async (req, res) => {
     if (req.query.isChannel === "true") {
       const isChannel = await User.findOne({ _id: user._id, isChannel: true });
       if (!isChannel) {
-        return res
-          .status(200)
-          .json({
-            status: false,
-            message:
-              "channel of that user does not created please firstly create channel of that user!",
-          });
+        return res.status(200).json({
+          status: false,
+          message:
+            "channel of that user does not created please firstly create channel of that user!",
+        });
       }
 
       if (req.body.fullName && req.body.fullName !== user.fullName) {
@@ -665,13 +700,11 @@ exports.update = async (req, res) => {
           fullName: req.body.fullName.trim(),
         });
         if (isDuplicateFullName) {
-          return res
-            .status(200)
-            .json({
-              status: false,
-              message:
-                "The provided channelName is already in use. Please choose a different one.",
-            });
+          return res.status(200).json({
+            status: false,
+            message:
+              "The provided channelName is already in use. Please choose a different one.",
+          });
         }
 
         user.fullName = req.body.fullName
@@ -711,13 +744,11 @@ exports.update = async (req, res) => {
     } else if (req.query.isChannel === "false") {
       const isChannel = await User.findOne({ _id: user._id, isChannel: false });
       if (!isChannel) {
-        return res
-          .status(200)
-          .json({
-            status: false,
-            message:
-              "channel of that user already created please passed valid isChannel true!",
-          });
+        return res.status(200).json({
+          status: false,
+          message:
+            "channel of that user already created please passed valid isChannel true!",
+        });
       }
 
       if (req.body.fullName && req.body.fullName !== user.fullName) {
@@ -726,13 +757,11 @@ exports.update = async (req, res) => {
           fullName: req.body.fullName.trim(),
         });
         if (isDuplicateFullName) {
-          return res
-            .status(200)
-            .json({
-              status: false,
-              message:
-                "The provided channelName is already in use. Please choose a different one.",
-            });
+          return res.status(200).json({
+            status: false,
+            message:
+              "The provided channelName is already in use. Please choose a different one.",
+          });
         }
 
         user.fullName = req.body.fullName
@@ -773,12 +802,10 @@ exports.update = async (req, res) => {
 
       return res.status(200).json({ status: true, message: "Success", user });
     } else {
-      return res
-        .status(500)
-        .json({
-          status: false,
-          message: "isChannel must be passed true or false.",
-        });
+      return res.status(500).json({
+        status: false,
+        message: "isChannel must be passed true or false.",
+      });
     }
   } catch (error) {
     console.log(error);
@@ -824,13 +851,11 @@ exports.updateProfile = async (req, res) => {
         fullName: req.body.fullName.trim(),
       });
       if (isDuplicateFullName) {
-        return res
-          .status(200)
-          .json({
-            status: false,
-            message:
-              "The provided channelName is already in use. Please choose a different one.",
-          });
+        return res.status(200).json({
+          status: false,
+          message:
+            "The provided channelName is already in use. Please choose a different one.",
+        });
       }
 
       user.fullName = req.body.fullName
@@ -895,7 +920,7 @@ exports.getProfile = async (req, res) => {
         .json({ status: false, message: "Oops ! Invalid details!" });
     }
 
-    console.log("Get profile: ", req.query.userId)
+    console.log("Get profile: ", req.query.userId);
 
     const user = await User.findOne({ _id: req.query.userId, isActive: true });
     if (!user) {
@@ -932,35 +957,29 @@ exports.getProfile = async (req, res) => {
         updateUser.isMonetization = monetizationUpdateUser.isMonetization; //Merge the updates from both functions
       }
 
-      return res
-        .status(200)
-        .json({
-          status: true,
-          message: "Profile of the user updated by admin!",
-          user: updateUser,
-        });
+      return res.status(200).json({
+        status: true,
+        message: "Profile of the user updated by admin!",
+        user: updateUser,
+      });
     }
 
     if (!user.isMonetization) {
       console.log("check monetization in get user profile API");
 
       const updateUser = await monetizationEnabled(user._id);
-      return res
-        .status(200)
-        .json({
-          status: true,
-          message: "Retrive profile of the user.",
-          user: updateUser,
-        });
-    }
-
-    return res
-      .status(200)
-      .json({
+      return res.status(200).json({
         status: true,
         message: "Retrive profile of the user.",
-        user: user,
+        user: updateUser,
       });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Retrive profile of the user.",
+      user: user,
+    });
   } catch (error) {
     console.log(error);
     return res
@@ -1093,7 +1112,7 @@ exports.detailsOfChannel = async (req, res, next) => {
       User.findOne({ channelId: channelId }),
       // User.findOne({ _id: userId, isActive: true }),
       Video.countDocuments({ channelId: channelId }),
-      UserWiseSubscription.findOne({ channelId: channelId }),   // userId: userId, 
+      UserWiseSubscription.findOne({ channelId: channelId }), // userId: userId,
       UserWiseSubscription.countDocuments({ channelId: channelId }),
       Video.aggregate([
         {
@@ -1150,7 +1169,7 @@ exports.detailsOfChannel = async (req, res, next) => {
         {
           $lookup: {
             from: "savetowatchlaters",
-            let: { videoId: "$_id" },  // , userId: userId
+            let: { videoId: "$_id" }, // , userId: userId
             pipeline: [
               {
                 $match: {
@@ -1449,7 +1468,8 @@ exports.playListsOfChannel = async (req, res, next) => {
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
     // const userId = new mongoose.Types.ObjectId(req.query.userId);
 
-    const [channel, data] = await Promise.all([   // user, 
+    const [channel, data] = await Promise.all([
+      // user,
       // User.findOne({ _id: userId, isActive: true }),
       User.findOne({ channelId: req.query.channelId }),
       PlayList.aggregate([
@@ -1571,13 +1591,11 @@ exports.playListsOfChannel = async (req, res, next) => {
         .json({ status: false, message: "channel does not found." });
     }
 
-    return res
-      .status(200)
-      .json({
-        status: true,
-        message: "get particular's channel's playLists.",
-        playListsOfChannel: data,
-      });
+    return res.status(200).json({
+      status: true,
+      message: "get particular's channel's playLists.",
+      playListsOfChannel: data,
+    });
   } catch (error) {
     console.log(error);
     return res
@@ -1624,7 +1642,8 @@ exports.aboutOfChannel = async (req, res) => {
 //search channel for user
 exports.searchChannel = async (req, res) => {
   try {
-    if (!req.body.searchString ) {  // || !req.body.userId
+    if (!req.body.searchString) {
+      // || !req.body.userId
       return res.status(200).json({
         status: false,
         message: "Oops ! Invalid details!",
@@ -1634,7 +1653,8 @@ exports.searchChannel = async (req, res) => {
     const searchString = req.body.searchString.trim();
     // const userId = new mongoose.Types.ObjectId(req.body.userId);
 
-    const [channel, response] = await Promise.all([   // user, 
+    const [channel, response] = await Promise.all([
+      // user,
       User.find({ fullName: { $regex: searchString, $options: "i" } }),
       // User.findOne({ _id: userId, isActive: true }),
       User.aggregate([
@@ -1980,13 +2000,11 @@ exports.retriveCoinHistoryByUser = async (req, res) => {
         .json({ status: false, message: "You are blocked by the admin." });
     }
 
-    return res
-      .status(200)
-      .json({
-        status: true,
-        message: "Retrieve all histories.",
-        data: history,
-      });
+    return res.status(200).json({
+      status: true,
+      message: "Retrieve all histories.",
+      data: history,
+    });
   } catch (error) {
     console.log(error);
     return res
