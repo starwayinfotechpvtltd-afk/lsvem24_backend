@@ -38,9 +38,14 @@ io.on("connect", async (socket) => {
     const sockets = await io.in(liveRoom).fetchSockets();
     //console.log("sockets: ", sockets);
 
-    sockets?.length ? sockets[0].join("liveUserRoom:" + parsedData.liveHistoryId) : console.log("sockets not able to emit");
+    sockets?.length
+      ? sockets[0].join("liveUserRoom:" + parsedData.liveHistoryId)
+      : console.log("sockets not able to emit");
 
-    io.in("liveUserRoom:" + parsedData.liveHistoryId).emit("liveRoomConnect", data);
+    io.in("liveUserRoom:" + parsedData.liveHistoryId).emit(
+      "liveRoomConnect",
+      data,
+    );
   }); //to join the first socket (sockets[0]) to a new room named "liveUserRoom:" + liveHistoryId
 
   socket.on("addView", async (data) => {
@@ -52,17 +57,24 @@ io.on("connect", async (socket) => {
     const sockets = await io.in(liveRoom).fetchSockets();
     //console.log("sockets in addView viewUserRoom:  ", sockets);
 
-    sockets?.length ? sockets[0].join("liveUserRoom:" + dataOfaddView.liveHistoryId) : console.log("sockets not able to emit");
+    sockets?.length
+      ? sockets[0].join("liveUserRoom:" + dataOfaddView.liveHistoryId)
+      : console.log("sockets not able to emit");
 
     const user = await User.findById(dataOfaddView.userId);
-    const liveUser = await LiveUser.findOne({ liveHistoryId: dataOfaddView.liveHistoryId });
+    const liveUser = await LiveUser.findOne({
+      liveHistoryId: dataOfaddView.liveHistoryId,
+    });
 
     if (user && liveUser) {
       const existLiveView = await LiveView.findOne({
         userId: dataOfaddView.userId,
         liveHistoryId: dataOfaddView.liveHistoryId,
       });
-      console.log("existLiveView in user and liveUser (addView):  ", existLiveView);
+      console.log(
+        "existLiveView in user and liveUser (addView):  ",
+        existLiveView,
+      );
 
       if (!existLiveView) {
         console.log("new liveView in user and liveUser (addView): ");
@@ -79,7 +91,9 @@ io.on("connect", async (socket) => {
       }
     }
 
-    const liveView = await LiveView.find({ liveHistoryId: dataOfaddView.liveHistoryId });
+    const liveView = await LiveView.find({
+      liveHistoryId: dataOfaddView.liveHistoryId,
+    });
     console.log("liveView in addView: ", liveView.length);
 
     if (liveUser) {
@@ -88,10 +102,15 @@ io.on("connect", async (socket) => {
     }
 
     if (liveView.length === 0) {
-      return io.in("liveUserRoom:" + dataOfaddView.liveHistoryId).emit("addView", liveView.length);
+      return io
+        .in("liveUserRoom:" + dataOfaddView.liveHistoryId)
+        .emit("addView", liveView.length);
     }
 
-    io.in("liveUserRoom:" + dataOfaddView.liveHistoryId).emit("addView", liveView.length);
+    io.in("liveUserRoom:" + dataOfaddView.liveHistoryId).emit(
+      "addView",
+      liveView.length,
+    );
   });
 
   socket.on("lessView", async (data) => {
@@ -101,7 +120,9 @@ io.on("connect", async (socket) => {
     console.log("parsed data in lessView:  ", dataOflessView);
 
     const sockets = await io.in(liveRoom).fetchSockets();
-    sockets?.length ? sockets[0].leave("liveUserRoom:" + dataOflessView.liveHistoryId) : console.log("sockets not able to leave in lessView");
+    sockets?.length
+      ? sockets[0].leave("liveUserRoom:" + dataOflessView.liveHistoryId)
+      : console.log("sockets not able to leave in lessView");
 
     console.log("sockets in lessView liveRoom:  ", sockets?.length);
 
@@ -115,20 +136,29 @@ io.on("connect", async (socket) => {
       await existLiveView.deleteOne();
     }
 
-    const liveView = await LiveView.find({ liveHistoryId: dataOflessView.liveHistoryId });
+    const liveView = await LiveView.find({
+      liveHistoryId: dataOflessView.liveHistoryId,
+    });
     console.log("liveView in lessView:  ", liveView.length);
 
-    const liveUser = await LiveUser.findOne({ liveHistoryId: dataOflessView.liveHistoryId });
+    const liveUser = await LiveUser.findOne({
+      liveHistoryId: dataOflessView.liveHistoryId,
+    });
     if (liveUser) {
       liveUser.view = liveView.length;
       await liveUser.save();
     }
 
     if (liveView.length === 0) {
-      return io.in("liveUserRoom:" + dataOflessView.liveHistoryId).emit("lessView", liveView.length);
+      return io
+        .in("liveUserRoom:" + dataOflessView.liveHistoryId)
+        .emit("lessView", liveView.length);
     }
 
-    io.in("liveUserRoom:" + dataOflessView?.liveHistoryId).emit("lessView", liveView.length);
+    io.in("liveUserRoom:" + dataOflessView?.liveHistoryId).emit(
+      "lessView",
+      liveView.length,
+    );
   });
 
   socket.on("liveChat", async (data) => {
@@ -138,9 +168,14 @@ io.on("connect", async (socket) => {
     console.log("parsed data in liveChat: ", dataOfComment);
 
     const sockets = await io.in(liveRoom).fetchSockets();
-    sockets?.length ? sockets[0].join("liveUserRoom:" + dataOfComment.liveHistoryId) : console.log("sockets not able to emit in liveChat");
+    sockets?.length
+      ? sockets[0].join("liveUserRoom:" + dataOfComment.liveHistoryId)
+      : console.log("sockets not able to emit in liveChat");
 
-    io.in("liveUserRoom:" + dataOfComment?.liveHistoryId).emit("liveChat", data);
+    io.in("liveUserRoom:" + dataOfComment?.liveHistoryId).emit(
+      "liveChat",
+      data,
+    );
 
     const liveHistory = await LiveHistory.findById(dataOfComment.liveHistoryId);
     if (liveHistory) {
@@ -156,7 +191,10 @@ io.on("connect", async (socket) => {
     console.log("parsedData in endLiveUser: ", parsedData);
 
     try {
-      const [user, liveHistory] = await Promise.all([User.findOne({ liveHistoryId: parsedData?.liveHistoryId }), LiveHistory.findById(parsedData?.liveHistoryId)]);
+      const [user, liveHistory] = await Promise.all([
+        User.findOne({ liveHistoryId: parsedData?.liveHistoryId }),
+        LiveHistory.findById(parsedData?.liveHistoryId),
+      ]);
 
       if (user) {
         if (user.isLive) {
@@ -170,7 +208,11 @@ io.on("connect", async (socket) => {
 
           await Promise.all([
             liveHistory.save(),
-            User.findOneAndUpdate({ _id: user._id }, { $set: { isLive: false, liveHistoryId: null } }, { new: true }),
+            User.findOneAndUpdate(
+              { _id: user._id },
+              { $set: { isLive: false, liveHistoryId: null } },
+              { new: true },
+            ),
             LiveUser.deleteOne({ userId: user._id }),
             LiveView.deleteMany({ liveHistoryId: liveHistory._id }),
           ]);
@@ -178,12 +220,19 @@ io.on("connect", async (socket) => {
           console.log("liveUser and related liveView deleted in endLiveUser");
         }
 
-        io.in("liveUserRoom:" + parsedData?.liveHistoryId).emit("endLiveUser", parsedData);
+        io.in("liveUserRoom:" + parsedData?.liveHistoryId).emit(
+          "endLiveUser",
+          parsedData,
+        );
 
-        const sockets = await io.in("liveUserRoom:" + parsedData?.liveHistoryId).fetchSockets();
+        const sockets = await io
+          .in("liveUserRoom:" + parsedData?.liveHistoryId)
+          .fetchSockets();
         console.log("sockets.length: ", sockets.length);
 
-        sockets?.length ? io.socketsLeave(parsedData?.liveHistoryId) : console.log("sockets not able to leave in endLiveUser");
+        sockets?.length
+          ? io.socketsLeave(parsedData?.liveHistoryId)
+          : console.log("sockets not able to leave in endLiveUser");
       }
     } catch (error) {
       console.error("Error in endLiveUser:", error);
@@ -191,46 +240,108 @@ io.on("connect", async (socket) => {
   });
 
   socket.on("disconnect", async (reason) => {
-    console.log(`socket disconnect ===============`, id, socket?.id, reason);
+    console.log("socket disconnect ===============", id, socket.id, reason);
 
-    if (id !== null) {
+    try {
+      // Validate user id
+      if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+        console.log("Invalid or missing user id:", id);
+        return;
+      }
+
+      // Validate live room
+      if (!liveRoom) {
+        console.log("No liveRoom found.");
+        return;
+      }
+
       const userId = new mongoose.Types.ObjectId(id);
 
-      if (liveRoom !== null) {
-        const socket = await io.in(liveRoom).fetchSockets();
+      // Check whether anyone is still connected to this room
+      const sockets = await io.in(liveRoom).fetchSockets();
+      console.log("Remaining sockets in room:", sockets.length);
 
-        if (socket?.length == 0) {
-          const user = await User.findById(userId);
-          if (user) {
-            if (user.isLive) {
-              const liveHistory = await LiveHistory.findById(user.liveHistoryId);
-              console.log("liveHistory in disconnect liveRoom: ", liveHistory);
-
-              if (liveHistory !== null) {
-                const endTime = moment().tz("Asia/Kolkata").format();
-                const start = moment.tz(liveHistory?.startTime, "Asia/Kolkata");
-                const end = moment.tz(endTime, "Asia/Kolkata");
-                const duration = moment.utc(end.diff(start)).format("HH:mm:ss");
-
-                liveHistory.endTime = endTime;
-                liveHistory.duration = duration;
-
-                await Promise.all([
-                  liveHistory?.save(),
-                  User.findOneAndUpdate({ _id: user._id }, { $set: { isLive: false, liveHistoryId: null } }, { new: true }),
-                  LiveUser.deleteOne({ userId: user._id }),
-                  LiveView.deleteMany({ liveHistoryId: liveHistory._id }),
-                ]);
-
-                console.log("liveUser and related liveView deleted in endLiveUser");
-
-                const sockets = await io.in("liveUserRoom:" + user?.liveHistoryId?.toString()).fetchSockets();
-                sockets?.length ? io.socketsLeave("liveUserRoom:" + user?.liveHistoryId?.toString()) : console.log("sockets not able to leave in disconnect");
-              }
-            }
-          }
-        }
+      // If there are still sockets connected, don't end the live
+      if (sockets.length > 0) {
+        console.log("Users are still connected. Skipping cleanup.");
+        return;
       }
+
+      // Find user
+      const user = await User.findById(userId);
+
+      if (!user) {
+        console.log("User not found.");
+        return;
+      }
+
+      if (!user.isLive) {
+        console.log("User is not live.");
+        return;
+      }
+
+      // Find live history
+      const liveHistory = await LiveHistory.findById(user.liveHistoryId);
+
+      if (!liveHistory) {
+        console.log("LiveHistory not found.");
+        return;
+      }
+
+      console.log("Ending live because broadcaster disconnected.");
+
+      // Calculate duration
+      const endTime = moment().tz("Asia/Kolkata").format();
+
+      const start = moment.tz(liveHistory.startTime, "Asia/Kolkata");
+      const end = moment.tz(endTime, "Asia/Kolkata");
+
+      const duration = moment.utc(end.diff(start)).format("HH:mm:ss");
+
+      // Update history
+      liveHistory.endTime = endTime;
+      liveHistory.duration = duration;
+
+      await Promise.all([
+        liveHistory.save(),
+
+        User.findByIdAndUpdate(
+          user._id,
+          {
+            $set: {
+              isLive: false,
+              liveHistoryId: null,
+            },
+          },
+          { new: true },
+        ),
+
+        LiveUser.deleteOne({
+          userId: user._id,
+        }),
+
+        LiveView.deleteMany({
+          liveHistoryId: liveHistory._id,
+        }),
+      ]);
+
+      console.log("Live ended successfully.");
+
+      // Notify all viewers
+      io.in("liveUserRoom:" + liveHistory._id.toString()).emit(
+        "endLiveUser",
+        JSON.stringify({
+          liveHistoryId: liveHistory._id,
+          userId: user._id,
+        }),
+      );
+
+      // Remove everyone from live room
+      io.socketsLeave("liveUserRoom:" + liveHistory._id.toString());
+
+      console.log("All sockets removed from liveUserRoom.");
+    } catch (error) {
+      console.error("Disconnect Error:", error);
     }
   });
 });
