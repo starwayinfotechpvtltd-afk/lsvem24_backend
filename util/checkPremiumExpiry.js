@@ -45,3 +45,5 @@ const checkPremiumExpiry = async (user) => {
     console.log("Premium Expiry Check Error:", error);
   }
 };
+
+module.exports = {checkPremiumExpiry};

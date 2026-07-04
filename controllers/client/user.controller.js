@@ -29,7 +29,7 @@ const WalletHistory = require("../../models/walletHistory.model");
 const VideoWatchReward = require("../../models/videoWatchReward.model");
 const CheckIn = require("../../models/checkIn.model");
 const CoinPlanHistory = require("../../models/coinplanHistory.model");
-const checkPremiumExpiry = require("../../util/checkPremiumExpiry");
+const {checkPremiumExpiry} = require("../../util/checkPremiumExpiry");
 
 //mongoose
 const mongoose = require("mongoose");
