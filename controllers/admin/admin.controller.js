@@ -167,24 +167,47 @@ function _0x25ed() {
 
 exports.store = async (req, res) => {
   try {
-    if (!req.body.email || !req.body.password) {
-      return res.json({ status: false, message: "Invalid details" });
+    console.log("Admin details:", req.body);
+
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.json({
+        status: false,
+        message: "Invalid details",
+      });
     }
-    
-    const admin = new Admin({
-      email: req.body.email,
-      password: cryptr.encrypt(req.body.password),
-      userId: user
+
+    // Check if email already exists
+    const existingAdmin = await Admin.findOne({
+      email: email.toLowerCase().trim(),
     });
+
+    if (existingAdmin) {
+      return res.json({
+        status: false,
+        message: "Email is already registered",
+      });
+    }
+
+    // Create new admin
+    const admin = new Admin({
+      email: email.toLowerCase().trim(),
+      password: cryptr.encrypt(password),
+    });
+
+    console.log("Admin", admin);
 
     await admin.save();
 
     return res.json({
       status: true,
-      message: "User register Successfully!",
+      message: "User registered successfully!",
     });
   } catch (err) {
-    res.status(500).json({
+    console.error(err);
+
+    return res.status(500).json({
       status: false,
       message: err.message,
     });
@@ -327,38 +350,38 @@ exports.store = async (req, res) => {
 //     }
 //   }));
 
-exports.login = async (req,res)=>{
- try{
-   const {email,password} = req.body;
+exports.login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-   if(!email || !password){
-     return res.json({
-       status:false,
-       message:"Invalid details"
-     });
-   }
+    if (!email || !password) {
+      return res.json({
+        status: false,
+        message: "Invalid details",
+      });
+    }
 
-   const admin = await Admin.findOne({
-     email: email.trim().toLowerCase()
-   });
+    const admin = await Admin.findOne({
+      email: email.trim().toLowerCase(),
+    });
 
-   if(!admin){
-     return res.json({
-       status:false,
-       message:"Admin not found"
-     });
-   }
+    if (!admin) {
+      return res.json({
+        status: false,
+        message: "Admin not found",
+      });
+    }
 
-   const realPass = cryptr.decrypt(admin.password);
+    const realPass = cryptr.decrypt(admin.password);
 
-   if(password !== realPass){
-     return res.json({
-       status:false,
-       message:"Password doesn't match"
-     });
-   }
+    if (password !== realPass) {
+      return res.json({
+        status: false,
+        message: "Password doesn't match",
+      });
+    }
 
-   const token = jwt.sign(
+    const token = jwt.sign(
       {
         _id: admin._id,
         email: admin.email,
@@ -369,19 +392,18 @@ exports.login = async (req,res)=>{
       { expiresIn: "1h" },
     );
 
-   res.json({
-     status:true,
-     token,
-     data: admin
-   });
-
- }catch(err){
-   res.status(500).json({
-     status:false,
-     message:err.message
-   });
- }
-}
+    res.json({
+      status: true,
+      token,
+      data: admin,
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: false,
+      message: err.message,
+    });
+  }
+};
 
 //get admin profile
 function _0x7192(_0x154260, _0x5254ad) {
@@ -531,12 +553,10 @@ exports.forgotPassword = async (req, res) => {
 
     const admin = await Admin.findOne({ email: req.body.email.trim() });
     if (!admin) {
-      return res
-        .status(200)
-        .json({
-          status: false,
-          message: "Admin does not found with that email.",
-        });
+      return res.status(200).json({
+        status: false,
+        message: "Admin does not found with that email.",
+      });
     }
 
     var tab = "";
@@ -600,13 +620,11 @@ exports.forgotPassword = async (req, res) => {
 
     if (response.error) {
       console.error("Error sending email via Resend:", response.error);
-      return res
-        .status(500)
-        .json({
-          status: false,
-          message: "Failed to send OTP email",
-          error: response.error.message,
-        });
+      return res.status(500).json({
+        status: false,
+        message: "Failed to send OTP email",
+        error: response.error.message,
+      });
     }
 
     return res
@@ -661,12 +679,10 @@ exports.updatePassword = async (req, res) => {
     });
   } catch (error) {
     console.log(error);
-    return res
-      .status(500)
-      .json({
-        status: false,
-        error: error.message || "Internal Server Error!!",
-      });
+    return res.status(500).json({
+      status: false,
+      error: error.message || "Internal Server Error!!",
+    });
   }
 };
 

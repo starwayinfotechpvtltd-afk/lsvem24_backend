@@ -666,7 +666,7 @@ exports.deleteVideo = async (req, res) => {
 
 exports.getUserVideos = async (req, res) => {
   try {
-    const { userId, page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20 } = req.query;  // userId, 
 
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -676,9 +676,9 @@ exports.getUserVideos = async (req, res) => {
     };
 
     // If userId exists, add user filter
-    if (userId) {
-      filter.userId = new mongoose.Types.ObjectId(userId);
-    }
+    // if (userId) {
+    //   filter.userId = new mongoose.Types.ObjectId(userId);
+    // }
 
     const [totalVideos, videos] = await Promise.all([
       Video.countDocuments(filter),
@@ -688,14 +688,14 @@ exports.getUserVideos = async (req, res) => {
           $match: filter,
         },
 
-        {
-          $lookup: {
-            from: "users",
-            localField: "userId",
-            foreignField: "_id",
-            as: "user",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "users",
+        //     localField: "userId",
+        //     foreignField: "_id",
+        //     as: "user",
+        //   },
+        // },
 
         {
           $unwind: {
@@ -713,7 +713,7 @@ exports.getUserVideos = async (req, res) => {
             videoTime: 1,
             createdAt: 1,
 
-            userId: "$user._id",
+            // userId: "$user._id",
             fullName: "$user.fullName",
             nickName: "$user.nickName",
             image: "$user.image",
@@ -743,7 +743,7 @@ exports.getUserVideos = async (req, res) => {
 
 exports.getUserShorts = async (req, res) => {
   try {
-    const { userId, page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20 } = req.query;  // userId, 
 
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -753,26 +753,26 @@ exports.getUserShorts = async (req, res) => {
     };
 
     // If userId exists, fetch only that user's shorts
-    if (userId) {
-      filter.userId = new mongoose.Types.ObjectId(userId);
-    }
+    // if (userId) {
+    //   filter.userId = new mongoose.Types.ObjectId(userId);
+    // }
 
     const [totalShorts, shorts] = await Promise.all([
       Video.countDocuments(filter),
 
       Video.aggregate([
         {
-          $match: filter,
+          $match: filter,  
         },
 
-        {
-          $lookup: {
-            from: "users",
-            localField: "userId",
-            foreignField: "_id",
-            as: "user",
-          },
-        },
+        // {
+        //   $lookup: {
+        //     from: "users",
+        //     localField: "userId",
+        //     foreignField: "_id",
+        //     as: "user",
+        //   },
+        // },
 
         {
           $unwind: {
@@ -790,7 +790,7 @@ exports.getUserShorts = async (req, res) => {
             videoTime: 1,
             createdAt: 1,
 
-            userId: "$user._id",
+            // userId: "$user._id",
             fullName: "$user.fullName",
             nickName: "$user.nickName",
             image: "$user.image",
