@@ -40,6 +40,33 @@ const { generateUniqueVideoId } = require("../../util/generateUniqueVideoId");
 //generateHistoryUniqueId
 const { generateHistoryUniqueId } = require("../../util/generateHistoryUniqueId");
 
+
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.lsvem24.app";
+
+exports.openVideoLink = async (req, res) => {
+  try {
+    const { videoId } = req.params;
+
+    const video = await UserVideo.findOne({
+      _id: videoId,
+      isActive: true,
+    });
+
+    if (!video) {
+      return res.redirect(PLAY_STORE_URL);
+    }
+
+    return res.redirect(
+      `${PLAY_STORE_URL}&referrer=${encodeURIComponent(
+        `video_${videoId}`
+      )}`
+    );
+  } catch (e) {
+    return res.redirect(PLAY_STORE_URL);
+  }
+};
+
 //video Unlocked
 exports.unlockPrivateVideo = async (req, res) => {
   try {

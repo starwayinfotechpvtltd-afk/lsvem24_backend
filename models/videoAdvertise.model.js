@@ -11,7 +11,7 @@ const VideoAdSchema = new mongoose.Schema(
     city: { type: String, trim: true },
     type: {
       type: String,
-      enum: ["skippable", "non-skippable", "banner", "overlay"],
+      enum: ["skippable", "non-skippable", "banner"],
       default: "skippable",
     },
     category: { type: String, trim: true },

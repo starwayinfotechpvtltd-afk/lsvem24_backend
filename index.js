@@ -123,8 +123,14 @@ db.once("open", async () => {
   require("./socket");
 
   const routes = require("./routes/index");
+  const referralRoutes=require("./routes/client/referral.route")
+  const videoShareRoutes=require("./routes/client/videoShare.route")
+ 
   
   app.use('/api', routes);
+  app.use("/", referralRoutes);
+  app.use("/video", videoShareRoutes)
+  
 
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 

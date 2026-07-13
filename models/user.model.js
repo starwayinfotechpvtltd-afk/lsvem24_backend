@@ -37,24 +37,28 @@ const userSchema = new mongoose.Schema(
     plan: {
       planStartDate: { type: String, default: null }, //premium plan start date
       planEndDate: { type: String, default: null }, //Premium plan end date
-      premiumPlanId: { type: mongoose.Schema.Types.ObjectId, ref: "PremiumPlan", default: null },
+      premiumPlanId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "PremiumPlan",
+        default: null,
+      },
       amount: { type: Number, default: 0 },
       validity: { type: Number, default: 0 },
       validityType: { type: String, default: null },
       planBenefit: { type: Array, default: [] },
-       productKey:    { type: String, default: null }
+      productKey: { type: String, default: null },
     },
     coinplan: [
       {
         amount: { type: Number, default: 0 },
         coin: { type: Number, default: 0 },
         extraCoin: { type: Number, default: 0 },
-        purchasedAt: { type: Date, default: Date.now }, 
+        purchasedAt: { type: Date, default: Date.now },
       },
     ],
     currentCoin: {
       type: Number,
-      default: 0
+      default: 0,
     },
     usedForAdsCoin: {
       type: Number,
@@ -72,7 +76,11 @@ const userSchema = new mongoose.Schema(
 
     isLive: { type: Boolean, default: false },
     channel: { type: String, default: null },
-    liveHistoryId: { type: mongoose.Schema.Types.ObjectId, ref: "LiveHistory", default: null },
+    liveHistoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LiveHistory",
+      default: null,
+    },
 
     watchAds: {
       count: { type: Number, default: 0 },
@@ -82,6 +90,11 @@ const userSchema = new mongoose.Schema(
     referralCode: { type: String, trim: true, unique: true },
     isReferral: { type: Boolean, default: false }, //True if the user was used referral code
     referralCount: { type: Number, default: 0 }, //how many users have signed up using a specific user's referral code
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
     coin: { type: Number, default: 0 },
     purchasedCoin: { type: Number, default: 0 }, //when coin plan purchased at that time increased
@@ -100,7 +113,7 @@ const userSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 userSchema.index({ createdAt: -1 });

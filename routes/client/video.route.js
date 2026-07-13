@@ -13,6 +13,7 @@ const checkAccessWithSecretKey = require("../../checkAccess");
 //controller
 const videoController = require("../../controllers/client/video.controller");
 
+
 //video Unlocked
 route.post(
   "/unlockPrivateVideo",

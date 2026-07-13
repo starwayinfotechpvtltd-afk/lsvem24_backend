@@ -424,7 +424,7 @@ exports.validateAndApplyReferralCode = async (req, res) => {
           User.findOneAndUpdate(
             { _id: user._id },
             {
-              $set: { isReferral: true },
+              $set: { isReferral: true, referredBy: referralCodeUser._id, },
             },
             { new: true },
           ),
@@ -1890,7 +1890,7 @@ exports.loadReferralHistoryByUser = async (req, res) => {
       data: referralHistory,
     });
   } catch (error) {
-    console.log(error);
+    console.log(error);   
     return res.status(500).json({
       status: false,
       error: error.message || "Internal Server Error",
