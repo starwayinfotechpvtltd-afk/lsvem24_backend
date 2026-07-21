@@ -125,9 +125,7 @@ exports.likeOrDislike = async (req, res) => {
 
     let [likedOrDislikedComment, alreadylikedOrDislikedComment] = await Promise.all([
       VideoComment.findOne({
-        userId: user._id,
-        _id: videoComment._id,
-        $or: [{ like: { $gt: 0 } }, { dislike: { $gt: 0 } }],
+        _id: videoComment._id
       }),
 
       LikeHistoryOfVideoComment.findOne({
@@ -267,6 +265,10 @@ exports.getComments = async (req, res) => {
       return res.status(200).json({ status: false, message: "Oops ! Invalid details!!" });
     }
 
+    const userId = req.query.userId
+  ? new mongoose.Types.ObjectId(req.query.userId)
+  : null;
+
     const [video] = await Promise.all([ Video.findOne({ _id: req.query.videoId, isActive: true })]);  // User.findOne({ _id: req.query.userId, isActive: true }),
 
     // if (!user) {
@@ -307,17 +309,26 @@ exports.getComments = async (req, res) => {
             from: "likehistoryofvideocomments",
             let: {
               videoCommentId: "$_id",
-              // userId: user._id,
+              userId: userId
             },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [{ $eq: ["$videoCommentId", "$$videoCommentId"] }],  // , { $eq: ["$userId", "$$userId"] }
-                  },
-                },
-              },
-            ],
+            pipeline: userId
+    ? [
+        {
+            $match: {
+                $expr: {
+                    $and: [
+                        { $eq: ["$videoCommentId", "$$videoCommentId"] },
+                        { $eq: ["$userId", "$$userId"] }
+                    ]
+                }
+            }
+        }
+    ]
+    : [{
+            $match: {
+                $expr: false
+            }
+        }],
             as: "likeHistory",
           },
         },
@@ -341,11 +352,11 @@ exports.getComments = async (req, res) => {
             videoId: 1,
 
             isLike: {
-              $cond: [{ $eq: ["$likeHistory.likeOrDislike", "like"] }, true, false],
-            },
+    $eq: ["$likeHistory.likeOrDislike", "like"]
+},
             isDislike: {
-              $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
-            },
+    $eq: ["$likeHistory.likeOrDislike", "dislike"]
+},
 
             time: {
               $let: {
@@ -423,17 +434,26 @@ exports.getComments = async (req, res) => {
             from: "likehistoryofvideocomments",
             let: {
               videoCommentId: "$_id",
-              // userId: user._id,
+              userId: userId
             },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [{ $eq: ["$videoCommentId", "$$videoCommentId"] }],  // , { $eq: ["$userId", "$$userId"] }
-                  },
-                },
-              },
-            ],
+            pipeline: userId
+    ? [
+        {
+            $match: {
+                $expr: {
+                    $and: [
+                        { $eq: ["$videoCommentId", "$$videoCommentId"] },
+                        { $eq: ["$userId", "$$userId"] }
+                    ]
+                }
+            }
+        }
+    ]
+    : [{
+            $match: {
+                $expr: false
+            }
+        }],
             as: "likeHistory",
           },
         },
@@ -457,11 +477,11 @@ exports.getComments = async (req, res) => {
             videoId: 1,
 
             isLike: {
-              $cond: [{ $eq: ["$likeHistory.likeOrDislike", "like"] }, true, false],
-            },
+    $eq: ["$likeHistory.likeOrDislike", "like"]
+},
             isDislike: {
-              $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
-            },
+    $eq: ["$likeHistory.likeOrDislike", "dislike"]
+},
 
             time: {
               $let: {
@@ -539,17 +559,26 @@ exports.getComments = async (req, res) => {
             from: "likehistoryofvideocomments",
             let: {
               videoCommentId: "$_id",
-              // userId: user._id,
+              userId: userId
             },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [{ $eq: ["$videoCommentId", "$$videoCommentId"] }], // , { $eq: ["$userId", "$$userId"] }
-                  },
-                },
-              },
-            ],
+            pipeline: userId
+    ? [
+        {
+            $match: {
+                $expr: {
+                    $and: [
+                        { $eq: ["$videoCommentId", "$$videoCommentId"] },
+                        { $eq: ["$userId", "$$userId"] }
+                    ]
+                }
+            }
+        }
+    ]
+    : [{
+            $match: {
+                $expr: false
+            }
+        }],
             as: "likeHistory",
           },
         },
@@ -573,11 +602,11 @@ exports.getComments = async (req, res) => {
             videoId: 1,
 
             isLike: {
-              $cond: [{ $eq: ["$likeHistory.likeOrDislike", "like"] }, true, false],
-            },
+    $eq: ["$likeHistory.likeOrDislike", "like"]
+},
             isDislike: {
-              $cond: [{ $eq: ["$likeHistory.likeOrDislike", "dislike"] }, true, false],
-            },
+    $eq: ["$likeHistory.likeOrDislike", "dislike"]
+},
 
             time: {
               $let: {

@@ -2888,7 +2888,7 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
         likeHistory.userId = user._id;
         likeHistory.videoId = video._id;
         likeHistory.channelId = video.channelId;
-        likeHistory.likeOrDislike = "dislike";
+        likeHistory.likeOrDislike = "dislike";   
         await likeHistory.save();
 
         const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins || 0;

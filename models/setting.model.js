@@ -37,8 +37,8 @@ const settingSchema = new mongoose.Schema(
 
     //engagement setting
     watchingVideoRewardCoins: { type: Number, default: 100 },
-    commentingRewardCoins: { type: Number, default: 100 },
-    likeVideoRewardCoins: { type: Number, default: 100 },
+    commentingRewardCoins: { type: Number, default: 50 },
+    likeVideoRewardCoins: { type: Number, default: 20 },
 
     //loginReward setting
     loginRewardCoins: { type: Number, default: 100 },

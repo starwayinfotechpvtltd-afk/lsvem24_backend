@@ -1,6 +1,7 @@
 //express
 require("dotenv").config()
 const express = require("express");
+const startPremiumPlanCron = require("./corn/premiumPlanCron");
 const app = express();
 
 //cors
@@ -120,6 +121,10 @@ db.once("open", async () => {
     console.error("initializeSettings failed on startup:", e);
   }
 
+  // Start Premium Plan Expiry Cron
+startPremiumPlanCron();
+console.log("Premium Plan Cron initialized");
+
   require("./socket");
 
   const routes = require("./routes/index");
@@ -128,8 +133,8 @@ db.once("open", async () => {
  
   
   app.use('/api', routes);
-  app.use("/", referralRoutes);
-  app.use("/video", videoShareRoutes)
+  app.use("/lsvem24/", referralRoutes);
+  app.use("/lsvem24/video", videoShareRoutes)
   
 
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));

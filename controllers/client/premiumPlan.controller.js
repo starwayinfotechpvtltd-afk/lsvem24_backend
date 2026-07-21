@@ -220,7 +220,7 @@ exports.fetchCoinplanHistoryOfUser = async (req, res) => {
         {
           $project: {
             _id: 1,
-            type: 1,
+            type: 1,  
             coin: 1,
             uniqueId: 1,
             paymentGateway: 1,

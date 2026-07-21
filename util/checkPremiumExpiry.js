@@ -1,34 +1,42 @@
+const User = require("../models/user.model");
+
+const resetPremiumPlan = async (userId) => {
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        isPremiumPlan: false,
+        "plan.planStartDate": null,
+        "plan.planEndDate": null,
+        "plan.premiumPlanId": null,
+        "plan.amount": 0,
+        "plan.validity": 0,
+        "plan.validityType": null,
+        "plan.planBenefit": [],
+        "plan.productKey": null,
+      },
+    }
+  );
+};
+
 const checkPremiumExpiry = async (user) => {
   try {
-    if (!user || !user.isPremiumPlan) return;
+    if (!user) return;
 
-    if (!user.plan?.planEndDate) {
-      return;
-    }
+    if (!user.isPremiumPlan) return;
 
+    if (!user.plan || !user.plan.planEndDate) return;
+
+    const now = new Date();
     const endDate = new Date(user.plan.planEndDate);
 
-    if (new Date() > endDate) {
-      console.log(`Premium expired for user ${user._id}`);
+    // Expire immediately when current date reaches or exceeds end date
+    if (now >= endDate) {
+      console.log(`Premium expired for user: ${user._id}`);
 
-      await User.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            isPremiumPlan: false,
-            "plan.planStartDate": null,
-            "plan.planEndDate": null,
-            "plan.premiumPlanId": null,
-            "plan.amount": 0,
-            "plan.validity": 0,
-            "plan.validityType": null,
-            "plan.planBenefit": [],
-            "plan.productKey": null,
-          },
-        }
-      );
+      await resetPremiumPlan(user._id);
 
-      // Update current object also
+      // Update current object so current request gets updated data
       user.isPremiumPlan = false;
       user.plan = {
         planStartDate: null,
@@ -41,9 +49,12 @@ const checkPremiumExpiry = async (user) => {
         productKey: null,
       };
     }
-  } catch (error) {
-    console.log("Premium Expiry Check Error:", error);
+  } catch (err) {
+    console.error("checkPremiumExpiry:", err);
   }
 };
 
-module.exports = {checkPremiumExpiry};
+module.exports = {
+  checkPremiumExpiry,
+  resetPremiumPlan,
+};

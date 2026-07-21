@@ -29,7 +29,7 @@ const WalletHistory = require("../../models/walletHistory.model");
 const VideoWatchReward = require("../../models/videoWatchReward.model");
 const CheckIn = require("../../models/checkIn.model");
 const CoinPlanHistory = require("../../models/coinplanHistory.model");
-const {checkPremiumExpiry} = require("../../util/checkPremiumExpiry");
+const { checkPremiumExpiry } = require("../../util/checkPremiumExpiry");
 
 //mongoose
 const mongoose = require("mongoose");
@@ -424,7 +424,7 @@ exports.validateAndApplyReferralCode = async (req, res) => {
           User.findOneAndUpdate(
             { _id: user._id },
             {
-              $set: { isReferral: true, referredBy: referralCodeUser._id, },
+              $set: { isReferral: true, referredBy: referralCodeUser._id },
             },
             { new: true },
           ),
@@ -471,7 +471,7 @@ exports.handleAdWatchReward = async (req, res) => {
         .json({ status: false, message: "Oops ! Invalid details!" });
     }
 
-    console.log("Handle ad watch reword called")
+    console.log("Handle ad watch reword called");
 
     const coinEarnedFromAd = parseInt(req.query.coinEarnedFromAd);
 
@@ -845,22 +845,28 @@ exports.updateProfile = async (req, res) => {
       user.image = req?.body?.image ? req?.body?.image : user?.image;
     }
 
-    if (req.body.fullName && req.body.fullName !== user.fullName) {
-      // Check if the new channelName is different from the current one
-      const isDuplicateFullName = await User.findOne({
-        fullName: req.body.fullName.trim(),
-      });
-      if (isDuplicateFullName) {
-        return res.status(200).json({
-          status: false,
-          message:
-            "The provided channelName is already in use. Please choose a different one.",
-        });
-      }
+    if (req.body.fullName) {
+      const newChannelName = req.body.fullName.trim();
 
-      user.fullName = req.body.fullName
-        ? req.body.fullName.trim()
-        : user.fullName; //channelName
+      // Only check if the user is changing the channel name
+      if (newChannelName !== user.fullName) {
+        const isDuplicateFullName = await User.findOne({
+          _id: { $ne: user._id }, // Ignore the current user
+          fullName: {
+            $regex: `^${newChannelName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            $options: "i",
+          },
+        });
+
+        if (isDuplicateFullName) {
+          return res.status(200).json({
+            status: false,
+            message: "Channel name already exists. Please use another name.",
+          });
+        }
+
+        user.fullName = newChannelName;
+      }
     }
 
     user.channelType = req.body.channelType
@@ -1890,7 +1896,7 @@ exports.loadReferralHistoryByUser = async (req, res) => {
       data: referralHistory,
     });
   } catch (error) {
-    console.log(error);   
+    console.log(error);
     return res.status(500).json({
       status: false,
       error: error.message || "Internal Server Error",
