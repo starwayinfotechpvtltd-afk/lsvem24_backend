@@ -10,7 +10,7 @@ const startPremiumPlanCron = () => {
       const result = await User.updateMany(
         {
           isPremiumPlan: true,
-          "plan.planEndDate": { $lte: new Date() },
+          "plan.planEndDate": { $lte: new Date().toISOString() },
         },
         {
           $set: {

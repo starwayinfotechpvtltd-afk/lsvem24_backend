@@ -16,4 +16,7 @@ route.post("/create", checkAccessWithSecretKey(), OTPController.store);
 //verify the OTP
 route.post("/verify", checkAccessWithSecretKey(), OTPController.verify);
 
+//create OTP and send the email for account deletion
+route.post("/deleteAccountOtp", checkAccessWithSecretKey(), OTPController.sendDeleteAccountOtp);
+
 module.exports = route;

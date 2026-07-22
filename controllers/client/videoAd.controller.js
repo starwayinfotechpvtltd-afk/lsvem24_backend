@@ -237,7 +237,8 @@ const getAdsByLocation = async (req, res) => {
     const now = new Date();
     const baseQuery = {
       isActive: true,
-      $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }],
+      $or: [{ isVerified: true }, { isVerified: { $exists: false } }],
+      $and: [{ $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }] }],
     };
 
     if (placement && ["pre-roll", "mid-roll", "both"].includes(placement)) {
@@ -332,8 +333,16 @@ const getLongVideoAds = async (req, res) => {
     const now = new Date();
     const query = {
       isActive: true,
-      adRuns: { $in: ["long videos", "both videos"] },
+      $or: [{ isVerified: true }, { isVerified: { $exists: false } }],
       $and: [
+        {
+          $or: [
+            { adRuns: { $in: ["long videos", "both videos"] } },
+            { adRuns: { $exists: false } },
+            { adRuns: null },
+            { adRuns: "" },
+          ],
+        },
         { $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }] },
         {
           $or: [
@@ -377,8 +386,16 @@ const getShortsFeedAds = async (req, res) => {
     const now = new Date();
     const ads = await VideoAd.find({
       isActive: true,
-      adRuns: { $in: ["short videos", "both videos"] },
+      $or: [{ isVerified: true }, { isVerified: { $exists: false } }],
       $and: [
+        {
+          $or: [
+            { adRuns: { $in: ["short videos", "both videos"] } },
+            { adRuns: { $exists: false } },
+            { adRuns: null },
+            { adRuns: "" },
+          ],
+        },
         { $or: [{ expiresAt: { $gt: now } }, { expiresAt: null }] },
         {
           $or: [

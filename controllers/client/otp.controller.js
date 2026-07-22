@@ -237,3 +237,102 @@ exports.verify = async (req, res) => {
     });
   }
 };
+
+// Create OTP for account deletion
+exports.sendDeleteAccountOtp = async (req, res) => {
+  try {
+    if (!req.body.email) {
+      return res.status(200).json({ status: false, message: "Email is required." });
+    }
+
+    const email = req.body.email.trim();
+    const userEmail = await User.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+    if (!userEmail) {
+      return res.status(200).json({ status: false, message: "Email does not exist" });
+    }
+
+    var newOtp = Math.floor(Math.random() * 8999) + 1000;
+
+    const existOTP = await OTP.findOne({ email: { $regex: new RegExp(`^${email}$`, 'i') } });
+
+    if (existOTP) {
+      existOTP.otp = newOtp;
+      existOTP.email = email;
+      await existOTP.save();
+    } else {
+      const otp = new OTP();
+      otp.email = email;
+      otp.otp = newOtp;
+      await otp.save();
+    }
+
+    var emailTemplate = `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f4f4;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #ffffff;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+      }
+      h2 {
+        color: #d9534f;
+      }
+      p {
+        color: #666;
+      }
+      .otp {
+        margin: 20px 0;
+        padding: 10px;
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 17px
+      }
+    </style>
+    </head>
+    <body>
+      <div class="container">
+        <h2 style="color: #d9534f;">Account Deletion Request</h2>
+        <b style="font-size: 18px">Hello </b><b style="color: #333; font-size: 18px">${userEmail.fullName || "User"},</b>
+        <br>
+        <p>You have requested to delete your account. Please use the following One-Time Password (OTP) to verify and confirm account deletion:</p>
+        <div class="otp">
+          <b>OTP: ${newOtp}</b>
+          <p>(Note: This OTP is valid for a limited time. If you did not request account deletion, please ignore this email.)</p>
+        </div>
+      </div>
+    </body>
+    </html>`;
+
+    const transporter = createTransporter();
+    
+    const mailOptions = {
+      from: `"${process.env.appName}" <${process.env.EMAIL}>`,
+      to: email,
+      subject: `Account Deletion OTP - ${process.env.appName}`,
+      html: emailTemplate,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log("✅ Delete Account OTP Email sent:", info.messageId);
+
+    return res.status(200).json({ status: true, message: "OTP sent to your email successfully!" });
+  } catch (error) {
+    console.error("❌ Email error:", error);
+    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+  }
+};
+

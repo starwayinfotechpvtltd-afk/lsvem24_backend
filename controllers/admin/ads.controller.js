@@ -47,9 +47,11 @@ exports.createAd = async (req, res) => {
         isActive !== undefined
           ? isActive === "true" || isActive === true
           : true,
+      isVerified: true,
       video: videoUrl,
       image: imageUrl,
       userId,
+      adRuns: req.body.adRuns || "long videos",
       uniqueAdsId: generateUniqueAdsId()
     });
 
@@ -71,6 +73,7 @@ exports.getAllAds = async (req, res) => {
       type,
       placement,
       isActive,
+      isVerified,
       search,
       sortBy = "createdAt",
       order = "desc",
@@ -84,6 +87,10 @@ exports.getAllAds = async (req, res) => {
 
     if (isActive !== undefined && isActive !== "" && isActive !== "All") {
       filter.isActive = isActive === "true";
+    }
+
+    if (isVerified !== undefined && isVerified !== "" && isVerified !== "All") {
+      filter.isVerified = isVerified === "true";
     }
 
     if (search && search !== "All" && search.trim() !== "") {
@@ -101,6 +108,7 @@ exports.getAllAds = async (req, res) => {
     const [ads, total] = await Promise.all([
       VideoAd.find(filter)
         .populate("zones", "name")
+        .populate("userId", "fullName image uniqueId")
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
         .limit(Number(limit)),
@@ -245,6 +253,9 @@ exports.updateAd = async (req, res) => {
     if (expiresAt !== undefined) ad.expiresAt = expiresAt || null;
     if (isActive !== undefined)
       ad.isActive = isActive === "true" || isActive === true;
+    if (req.body.isVerified !== undefined)
+      ad.isVerified = req.body.isVerified === "true" || req.body.isVerified === true;
+    if (req.body.adRuns !== undefined) ad.adRuns = req.body.adRuns;
 
     await ad.save();
     res.status(200).json({ success: true, data: ad });
@@ -310,6 +321,28 @@ exports.toggleAdStatus = async (req, res) => {
   }
 };
 
+// ─── TOGGLE VERIFICATION ──────────────────────────────────────────────────────
+
+exports.toggleAdVerification = async (req, res) => {
+  try {
+    const ad = await VideoAd.findById(req.params.id);
+    if (!ad)
+      return res.status(404).json({ success: false, message: "Ad not found" });
+
+    ad.isVerified = !ad.isVerified;
+    await ad.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Ad is now ${ad.isVerified ? "verified" : "unverified"}`,
+      isVerified: ad.isVerified,
+    });
+  } catch (err) {
+    console.error("toggleAdVerification error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // ─── BULK TOGGLE ──────────────────────────────────────────────────────────────
 
 exports.bulkToggleStatus = async (req, res) => {
@@ -331,6 +364,31 @@ exports.bulkToggleStatus = async (req, res) => {
     });
   } catch (err) {
     console.error("bulkToggleStatus error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ─── BULK TOGGLE VERIFICATION ─────────────────────────────────────────────────
+
+exports.bulkToggleVerification = async (req, res) => {
+  try {
+    const { ids, isVerified } = req.body;
+    if (!ids || !ids.length)
+      return res
+        .status(400)
+        .json({ success: false, message: "No IDs provided" });
+
+    await VideoAd.updateMany(
+      { _id: { $in: ids } },
+      { $set: { isVerified: Boolean(isVerified) } },
+    );
+
+    res.status(200).json({
+      success: true,
+      message: `${ids.length} ad(s) set to ${isVerified ? "verified" : "unverified"}`,
+    });
+  } catch (err) {
+    console.error("bulkToggleVerification error:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -447,6 +505,7 @@ exports.getActiveAds = async (req, res) => {
 
     const filter = {
       isActive: true,
+      isVerified: true,
       $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
     };
 

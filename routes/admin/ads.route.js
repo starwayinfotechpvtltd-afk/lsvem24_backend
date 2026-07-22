@@ -25,8 +25,14 @@ route.get("/deleteAds", checkAccessWithSecretKey(), adsController.deleteAd);
 
 route.get("/bulkDeleteAds", checkAccessWithSecretKey(), adsController.bulkDeleteAds);
 
-route.get("/toggleStatus", checkAccessWithSecretKey(), adsController.toggleAdStatus);
+route.patch("/:id/toggle", checkAccessWithSecretKey(), adsController.toggleAdStatus);
+route.patch("/bulk/toggle", checkAccessWithSecretKey(), adsController.bulkToggleStatus);
 
+route.patch("/:id/toggleVerification", checkAccessWithSecretKey(), adsController.toggleAdVerification);
+route.patch("/bulk/toggleVerification", checkAccessWithSecretKey(), adsController.bulkToggleVerification);
+
+// Keeping old routes just in case any other part of frontend uses them
+route.get("/toggleStatus", checkAccessWithSecretKey(), adsController.toggleAdStatus);
 route.get("/bulkToggleStatus", checkAccessWithSecretKey(), adsController.bulkToggleStatus);
 
 route.get("/recordView", checkAccessWithSecretKey(), adsController.recordView);

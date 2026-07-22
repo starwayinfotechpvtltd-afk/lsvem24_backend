@@ -51,6 +51,13 @@ route.get("/aboutOfChannel", checkAccessWithSecretKey(), UserController.aboutOfC
 //search channel for user
 route.post("/searchChannel", checkAccessWithSecretKey(), UserController.searchChannel);
 
+// // send email when deleting user account
+// route.post("/deleteaccountotp", checkAccessWithSecretKey(), UserController.sendDeleteAccountOTP);
+
+// verify user account through otp when deleting user account
+route.post("/verifydeleteotp", checkAccessWithSecretKey(), UserController.verifyDeleteAccountOTP);
+
+
 //delete user account
 route.delete("/deleteUserAccount", checkAccessWithSecretKey(), UserController.deleteUserAccount);
 

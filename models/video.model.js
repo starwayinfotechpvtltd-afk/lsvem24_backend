@@ -6,9 +6,21 @@ const { SCHEDULE_TYPE } = require("../types/constant");
 const { VIDEO_PRIVACY_TYPE } = require("../types/constant");
 
 const mongoose = require("mongoose");
+const crypto = require("crypto");
+
+function generateSlug(length = 11) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-";
+  let slug = "";
+  const bytes = crypto.randomBytes(length);
+  for (let i = 0; i < length; i++) {
+    slug += chars[bytes[i] % chars.length];
+  }
+  return slug;
+}
 
 const videoSchema = new mongoose.Schema(
   {
+    slug: { type: String, unique: true, sparse: true },
     uniqueVideoId: { type: String, default: null },
     title: { type: String },
     description: { type: String },
@@ -61,6 +73,25 @@ const videoSchema = new mongoose.Schema(
   },
 );
 
+videoSchema.pre("save", async function (next) {
+  if (!this.slug) {
+    let isUnique = false;
+    let newSlug = "";
+    let attempts = 0;
+    while (!isUnique && attempts < 10) {
+      newSlug = generateSlug(11);
+      const existing = await mongoose.models.Video.findOne({ slug: newSlug });
+      if (!existing) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+    this.slug = newSlug;
+  }
+  next();
+});
+
+videoSchema.index({ slug: 1 });
 videoSchema.index({ uniqueVideoId: 1 });
 videoSchema.index({ userId: 1 });
 videoSchema.index({ soundListId: 1 });

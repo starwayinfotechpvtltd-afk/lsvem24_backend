@@ -29,6 +29,7 @@ const WalletHistory = require("../../models/walletHistory.model");
 const VideoWatchReward = require("../../models/videoWatchReward.model");
 const CheckIn = require("../../models/checkIn.model");
 const CoinPlanHistory = require("../../models/coinplanHistory.model");
+const OTP = require("../../models/otp.model");
 const { checkPremiumExpiry } = require("../../util/checkPremiumExpiry");
 
 //mongoose
@@ -1762,16 +1763,137 @@ exports.searchChannel = async (req, res) => {
   }
 };
 
+// exports.sendDeleteAccountOTP = async (req, res) => {
+//   try {
+//     const email = req.body.email?.trim();
+// console.log("Send OTP function called")
+//     if (!email) {
+//       return res.status(200).json({
+//         status: false,
+//         message: "Email is required.",
+//       });
+//     }
+
+//     const user = await User.findOne({
+//       email: { $regex: new RegExp(`^${email}$`, "i") },
+//     });
+
+//     if (!user) {
+//       return res.status(200).json({
+//         status: false,
+//         message: "Email does not exist.",
+//       });
+//     }
+
+//     const otp = Math.floor(1000 + Math.random() * 9000);
+
+//     await OTP.findOneAndUpdate(
+//       {
+//         email: email.toLowerCase(),
+//       },
+//       {
+//         email: email.toLowerCase(),
+//         otp,
+//       },
+//       {
+//         upsert: true,
+//         new: true,
+//       },
+//     );
+
+//     // Send Email
+//     await sendOTPEmail(email, otp);
+
+//     return res.status(200).json({
+//       status: true,
+//       message: "OTP sent successfully.",
+//     });
+//   } catch (error) {
+//     console.log("ERROR", error)
+//     return res.status(500).json({
+//       status: false,
+//       message: error.message,
+//     });
+//   }
+// };
+
+exports.verifyDeleteAccountOTP = async (req, res) => {
+  const { email, otp } = req.body;
+
+  const otpData = await OTP.findOne({
+    email: { $regex: new RegExp(`^${email}$`, "i") },
+  });
+
+  if (!otpData) {
+    return res.status(200).json({
+      status: false,
+      message: "OTP expired.",
+    });
+  }
+
+  if (otpData.otp != otp) {
+    return res.status(200).json({
+      status: false,
+      message: "Invalid OTP.",
+    });
+  }
+
+  return res.status(200).json({
+    status: true,
+    message: "OTP verified.",
+  });
+};
+
 //delete user account
 exports.deleteUserAccount = async (req, res) => {
   try {
-    if (!req.query.userId) {
+    const userIdStr = req.query.userId || req.body.userId;
+    const emailStr = req.query.email || req.body.email;
+    const otpStr = req.query.otp || req.body.otp;
+
+    if (!userIdStr) {
       return res
         .status(200)
         .json({ status: false, message: "userId must be required!" });
     }
 
-    const userId = new mongoose.Types.ObjectId(req.query.userId);
+    if (!emailStr || !otpStr) {
+      return res
+        .status(200)
+        .json({
+          status: false,
+          message: "Email and OTP are required for account deletion!",
+        });
+    }
+
+    const email = emailStr.trim();
+    const otpUser = await OTP.findOne({
+      email: {
+        $regex: new RegExp(`^${email}$`, "i"),
+      },
+    });
+
+    if (!otpUser) {
+      return res.status(200).json({
+        status: false,
+        message: "OTP expired.",
+      });
+    }
+
+    if (otpUser.otp != parseInt(otpStr)) {
+      return res.status(200).json({
+        status: false,
+        message: "Invalid OTP.",
+      });
+    }
+
+    await OTP.deleteOne({
+      email: {
+        $regex: new RegExp(`^${email}$`, "i"),
+      },
+    });
+
+    const userId = new mongoose.Types.ObjectId(userIdStr);
 
     const [user, videosToDelete] = await Promise.all([
       User.findById(userId),

@@ -127,14 +127,12 @@ console.log("Premium Plan Cron initialized");
 
   require("./socket");
 
-  const routes = require("./routes/index");
-  const referralRoutes=require("./routes/client/referral.route")
-  const videoShareRoutes=require("./routes/client/videoShare.route")
- 
-  
+  const routes=require("./routes/index")
+  const webShareRoutes = require("./routes/client/webShare.route");
+
   app.use('/api', routes);
-  app.use("/lsvem24/", referralRoutes);
-  app.use("/lsvem24/video", videoShareRoutes)
+  app.use("/", webShareRoutes);
+  app.use("/lsvem24", webShareRoutes);
   
 
   app.use("/uploads", express.static(path.join(__dirname, "uploads")));

@@ -105,10 +105,6 @@ exports.handleDailyCheckInReward = async (req, res) => {
       //Find today's check-in for the current week (same day of the week)
       const lastCheckInDate = userCheckIn?.lastCheckInDate ? new Date(userCheckIn.lastCheckInDate).toISOString().slice(0, 10) : null;
 
-      console.log("checkInForToday                                             ", checkInForToday);
-      console.log("Check if user has already checked in today (lastCheckInDate)", lastCheckInDate);
-      console.log("Check if user has already checked in today                  ", today);
-
       //Check if user has already checked in today
       if (lastCheckInDate === today) {
         return res.status(200).json({ status: false, message: "You have already checked in today." });
