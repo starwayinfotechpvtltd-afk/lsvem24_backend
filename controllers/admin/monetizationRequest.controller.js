@@ -107,29 +107,36 @@ exports.handleMonetizationRequest = async (req, res) => {
 
       res.status(200).json({ status: true, message: "Monetization request accepted by the admin." });
 
+      const hasWithdrawable = (user?.totalWithdrawableAmount || 0) > 0;
+
       await Promise.all([
         User.updateOne(
-          { _id: user._id, totalWithdrawableAmount: { $gt: 0 } },
+          { _id: user._id },
           {
-            $inc: {
-              totalWithdrawableAmount: -Math.abs(user?.totalWithdrawableAmount),
-              totalEarningAmount: Math.abs(user?.totalWithdrawableAmount),
-            },
-          },
-          {
-            $set: { totalWatchTime: 0 },
+            $set: { isMonetization: true, totalWatchTime: 0 },
+            ...(hasWithdrawable
+              ? {
+                  $inc: {
+                    totalWithdrawableAmount: -Math.abs(user.totalWithdrawableAmount),
+                    totalEarningAmount: Math.abs(user.totalWithdrawableAmount),
+                  },
+                }
+              : {}),
           }
         ),
-        WalletHistory({
-          userId: user._id,
-          uniqueId: uniqueId,
-          coin: 0,
-          amount: user?.totalWithdrawableAmount || 0,
-          type: 1,
-          date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-          totalWatchTimeInHours: monetizationRequest.totalWatchTimeInHours,
-        }).save(),
-
+        ...(hasWithdrawable
+          ? [
+              WalletHistory({
+                userId: user._id,
+                uniqueId: uniqueId,
+                coin: 0,
+                amount: user.totalWithdrawableAmount || 0,
+                type: 1,
+                date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+                totalWatchTimeInHours: monetizationRequest.totalWatchTimeInHours,
+              }).save(),
+            ]
+          : []),
         MonetizationRequest.updateOne({ _id: monetizationRequest._id }, { $set: { status: 2 } }),
       ]);
 
@@ -166,7 +173,10 @@ exports.handleMonetizationRequest = async (req, res) => {
 
       res.status(200).json({ status: true, message: "Monetization request declined by the admin." });
 
-      await MonetizationRequest.updateOne({ _id: monetizationRequest._id }, { $set: { status: 3, reason: req.query.reason?.trim() } });
+      await Promise.all([
+        User.updateOne({ _id: user._id }, { $set: { isMonetization: false } }),
+        MonetizationRequest.updateOne({ _id: monetizationRequest._id }, { $set: { status: 3, reason: req.query.reason?.trim() } }),
+      ]);
 
       //checks if the user has an fcmToken
       if (user.fcmToken && user.fcmToken !== null) {

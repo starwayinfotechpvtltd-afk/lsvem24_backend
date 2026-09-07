@@ -28,6 +28,7 @@ const adRewardCoin = require("./adRewardCoin.route");
 const dailyCoinReward = require("./dailyRewardCoin.route");
 const coinplan = require("./coinplan.route");
 const videoAd=require("./videoAd.route")
+const payment = require("./payment.route");
 
 //exports client's route.js
 route.use("/user", user);
@@ -54,6 +55,7 @@ route.use("/setting", setting);
 route.use("/adRewardCoin", adRewardCoin);
 route.use("/dailyCoinReward", dailyCoinReward);
 route.use("/coinplan", coinplan);
-route.use("/videoad", videoAd)
+route.use("/videoad", videoAd);
+route.use("/payment", payment);
 
 module.exports = route;

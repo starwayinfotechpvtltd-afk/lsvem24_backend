@@ -81,8 +81,9 @@ const settingSchema = new mongoose.Schema(
     //monetization setting
     earningPerHour: { type: Number, min: 0, default: 0 }, //earning with default currency
     isMonetization: { type: Boolean, default: false },
-    minWatchTime: { type: Number, default: 0 }, //that value always in hours
-    minSubScriber: { type: Number, default: 0 },
+    minWatchTime: { type: Number, default: 3000 }, //that value always in hours (long videos)
+    minSubScriber: { type: Number, default: 500 }, //minimum subscriber required
+    minShortsViews: { type: Number, default: 3000000 }, //minimum public shorts views required (3 million)
     adDisplayIndex: { type: Number, default: 0 }, //it represents the index at which ads should be displayed
 
     watermarkType: { type: Number, enum: [1, 2] }, //1.active 2.inactive

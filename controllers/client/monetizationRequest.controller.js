@@ -2,6 +2,7 @@ const MonetizationRequest = require("../../models/monetizationRequest.model");
 
 //import models
 const User = require("../../models/user.model");
+const Video = require("../../models/video.model");
 const UserWiseSubscription = require("../../models/userWiseSubscription.model");
 const WatchHistory = require("../../models/watchHistory.model");
 
@@ -11,11 +12,12 @@ const admin = require("../../util/privateKey");
 //monetization request made by particular user
 exports.createMonetizationRequest = async (req, res) => {
   try {
-    if (!req.query.userId) {
+    const userId = req.body?.userId || req.query?.userId;
+    if (!userId) {
       return res.status(200).json({ status: false, message: "Oops ! Invalid details!!" });
     }
 
-    const user = await User.findOne({ _id: req.query.userId, isActive: true });
+    const user = await User.findOne({ _id: userId, isActive: true });
     if (!user) {
       return res.status(200).json({ status: false, message: "User does not found." });
     }
@@ -28,18 +30,23 @@ exports.createMonetizationRequest = async (req, res) => {
       return res.status(200).json({ status: false, message: "channel of that user does not created please firstly create channel of that user!" });
     }
 
-    if (!user.isMonetization) {
-      return res.status(200).json({ status: false, message: "Oops ! Monetization is not allowed for your account." });
-    }
+    const idProof = req.body?.idProof || req.query?.idProof || "";
+    const selfie = req.body?.selfie || req.query?.selfie || "";
+    const idProofType = req.body?.idProofType || req.query?.idProofType || "Government ID";
 
-    if (!settingJSON || !settingJSON.minSubScriber || !settingJSON.minWatchTime) {
+    if (!idProof || !selfie) {
       return res.status(200).json({
         status: false,
-        message: "minSubScriber and minWatchTime not configured in settings.",
+        message: "Please upload your ID proof and take a selfie before submitting.",
       });
     }
 
-    if (!settingJSON.isMonetization) {
+    const currentSettings = global.settingJSON || require("../../setting");
+    const minSubScriber = (currentSettings && currentSettings.minSubScriber) ? currentSettings.minSubScriber : 500;
+    const minWatchTime = (currentSettings && currentSettings.minWatchTime) ? currentSettings.minWatchTime : 3000;
+    const minShortsViews = (currentSettings && currentSettings.minShortsViews) ? currentSettings.minShortsViews : 3000000;
+
+    if (currentSettings && currentSettings.isMonetization === false) {
       return res.status(200).json({
         status: false,
         message: "Apologies ! The administrator has disabled the monetization settings.",
@@ -49,37 +56,126 @@ exports.createMonetizationRequest = async (req, res) => {
     const existRequest = await MonetizationRequest.findOne({ userId: user._id });
     if (existRequest?.status == 1) {
       return res.status(200).json({ status: true, message: "Monetization request already send by you to admin.", monetizationRequest: existRequest });
-    } else if (existRequest?.status == 2) {
+    } else if (existRequest?.status == 2 || user.isMonetization) {
       return res.status(200).json({
         status: false,
-        message: "Your monetization request has already been approved by the admin, and as such, you are unable to submit the same request for a second time.",
+        message: "Your channel has already been approved and monetized.",
         monetizationRequest: existRequest,
       });
-    } else if (existRequest?.status == 3) {
-      const [totalSubscribers, deleteExistRequest] = await Promise.all([UserWiseSubscription.countDocuments({ channelId: user.channelId }), existRequest.deleteOne()]);
+    } else {
+      const channelIdentifiers = [user.channelId, user._id ? user._id.toString() : null].filter(Boolean);
 
-      const watchTimeInMinutes = Math.floor(parseFloat(user?.totalWatchTime));
-      const watchTimeInHours = watchTimeInMinutes / 60; // Convert minutes to hours
-      const roundedWatchTimeInHours = Math.floor(watchTimeInHours);
-      const minWatchTime = settingJSON?.minWatchTime;
-      const minSubScriber = settingJSON?.minSubScriber;
+      const userVideos = await Video.find({
+        $or: [
+          { channelId: { $in: channelIdentifiers } },
+          { userId: user._id },
+        ],
+      }).select("_id videoType visibilityType");
+
+      const longVideoIds = userVideos
+        .filter((v) => (v.videoType === 1 || !v.videoType) && (v.visibilityType === 1 || !v.visibilityType))
+        .map((v) => v._id);
+
+      const shortsVideoIds = userVideos
+        .filter((v) => v.videoType === 2 && (v.visibilityType === 1 || !v.visibilityType))
+        .map((v) => v._id);
+
+      const [totalSubscribers, longWatchHistoryResults, shortsViewsResults, deleteExistRequest] = await Promise.all([
+        UserWiseSubscription.countDocuments({ channelId: { $in: channelIdentifiers } }),
+        WatchHistory.aggregate([
+          {
+            $match: {
+              $or: [
+                { videoId: { $in: longVideoIds } },
+                { videoChannelId: { $in: channelIdentifiers } },
+                { videoUserId: user._id },
+              ],
+            },
+          },
+          {
+            $lookup: {
+              from: "videos",
+              localField: "videoId",
+              foreignField: "_id",
+              as: "video",
+            },
+          },
+          { $unwind: "$video" },
+          {
+            $match: {
+              "video.videoType": 1, // long video
+              "video.visibilityType": 1, // public
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalWatchTime: { $sum: "$totalWatchTime" },
+            },
+          },
+        ]),
+        WatchHistory.aggregate([
+          {
+            $match: {
+              $or: [
+                { videoId: { $in: shortsVideoIds } },
+                { videoChannelId: { $in: channelIdentifiers } },
+                { videoUserId: user._id },
+              ],
+            },
+          },
+          {
+            $lookup: {
+              from: "videos",
+              localField: "videoId",
+              foreignField: "_id",
+              as: "video",
+            },
+          },
+          { $unwind: "$video" },
+          {
+            $match: {
+              "video.videoType": 2, // shorts video
+              "video.visibilityType": 1, // public
+            },
+          },
+          {
+            $count: "totalShortsViews",
+          },
+        ]),
+        existRequest?.deleteOne(),
+      ]);
+
+      const totalWatchTimeMinutes = longWatchHistoryResults.length > 0 ? (longWatchHistoryResults[0].totalWatchTime || 0) : 0;
+      const maxWatchTimeMinutes = Math.max(totalWatchTimeMinutes, user.totalWatchTime || 0);
+      const totalWatchTimeHours = parseFloat((maxWatchTimeMinutes / 60).toFixed(2));
+      const totalShortsViews = shortsViewsResults.length > 0 ? (shortsViewsResults[0].totalShortsViews || 0) : 0;
 
       const saveMonetizationRequest = await MonetizationRequest.create({
         userId: user._id,
-        channelId: user.channelId,
+        channelId: user.channelId || (user._id ? user._id.toString() : ""),
         channelName: user.fullName,
         totalSubScribers: totalSubscribers,
-        totalWatchTime: watchTimeInMinutes,
-        totalWatchTimeInHours: roundedWatchTimeInHours,
+        totalWatchTime: maxWatchTimeMinutes,
+        totalWatchTimeInHours: totalWatchTimeHours,
         minWatchTime: minWatchTime,
         minSubScriber: minSubScriber,
+        totalShortsViews: totalShortsViews,
+        minShortsViews: minShortsViews,
         status: 1,
+        idProof: idProof,
+        selfie: selfie,
+        idProofType: idProofType,
         requestDate: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
       });
 
+      const messageText = existRequest?.status == 3
+        ? "Monetization request already declined by admin and new request has been created."
+        : "Monetization request has been send to admin.";
+
       res.status(200).json({
         status: true,
-        message: "Monetization request already declined by admin and new request has been created.",
+        message: messageText,
         monetizationRequest: saveMonetizationRequest,
       });
 
@@ -105,56 +201,10 @@ exports.createMonetizationRequest = async (req, res) => {
             console.log("Error sending message:      ", error);
           });
       }
-    } else {
-      const [totalSubscribers, deleteExistRequest] = await Promise.all([UserWiseSubscription.countDocuments({ channelId: user.channelId }), existRequest?.deleteOne()]);
-
-      const watchTimeInMinutes = Math.floor(parseFloat(user?.totalWatchTime));
-      const watchTimeInHours = watchTimeInMinutes / 60; // Convert minutes to hours
-      const roundedWatchTimeInHours = Math.floor(watchTimeInHours);
-      const minWatchTime = settingJSON?.minWatchTime;
-      const minSubScriber = settingJSON?.minSubScriber;
-
-      const saveMonetizationRequest = await MonetizationRequest.create({
-        userId: user._id,
-        channelId: user.channelId,
-        channelName: user.fullName,
-        totalSubScribers: totalSubscribers,
-        totalWatchTime: watchTimeInMinutes,
-        totalWatchTimeInHours: roundedWatchTimeInHours,
-        minWatchTime: minWatchTime,
-        minSubScriber: minSubScriber,
-        status: 1,
-        requestDate: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-      });
-
-      res.status(200).json({ status: true, message: "Monetization request has been send to admin.", monetizationRequest: saveMonetizationRequest });
-
-      //checks if the user has an fcmToken
-      if (user.fcmToken && user.fcmToken !== null) {
-        const adminPromise = await admin;
-
-        const payload = {
-          token: user.fcmToken,
-          notification: {
-            title: "📈 Monetization Request Submitted 📈",
-            body: "Your monetization request has been successfully submitted and is now being reviewed. We will inform you of the outcome as soon as possible. Thank you for your patience.",
-          },
-        };
-
-        adminPromise
-          .messaging()
-          .send(payload)
-          .then((response) => {
-            console.log("Successfully sent with response: ", response);
-          })
-          .catch((error) => {
-            console.log("Error sending message:      ", error);
-          });
-      }
     }
   } catch (error) {
     console.log(error);
-    return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
+    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
 
@@ -174,6 +224,8 @@ exports.getMonetizationForUser = async (req, res) => {
       return res.status(200).json({ status: false, message: "you are blocked by admin!" });
     }
 
+    const channelIdentifiers = [user.channelId, user._id ? user._id.toString() : null].filter(Boolean);
+
     let dateFilterQuery = {};
     if (req?.query?.startDate !== "All" && req?.query?.endDate !== "All") {
       const startDate = new Date(req?.query?.startDate);
@@ -189,12 +241,17 @@ exports.getMonetizationForUser = async (req, res) => {
     }
 
     const [channel, totalSubscribers, dateWiseotalSubscribers, totalViewsOfthatChannelVideos, watchHistoryResults] = await Promise.all([
-      User.findOne({ channelId: user.channelId }).select("fullName image channelId totalWithdrawableAmount"),
-      UserWiseSubscription.countDocuments({ channelId: user.channelId }),
-      UserWiseSubscription.countDocuments({ channelId: user.channelId, ...dateFilterQuery }),
-      WatchHistory.countDocuments({ videoChannelId: user.channelId, ...dateFilterQuery }),
+      User.findOne({
+        $or: [
+          { channelId: { $in: channelIdentifiers } },
+          { _id: user._id },
+        ],
+      }).select("fullName image channelId totalWithdrawableAmount"),
+      UserWiseSubscription.countDocuments({ channelId: { $in: channelIdentifiers } }),
+      UserWiseSubscription.countDocuments({ channelId: { $in: channelIdentifiers }, ...dateFilterQuery }),
+      WatchHistory.countDocuments({ videoChannelId: { $in: channelIdentifiers }, ...dateFilterQuery }),
       WatchHistory.aggregate([
-        { $match: { videoChannelId: user.channelId, ...dateFilterQuery } },
+        { $match: { videoChannelId: { $in: channelIdentifiers }, ...dateFilterQuery } },
         {
           $group: {
             _id: null,
@@ -203,7 +260,6 @@ exports.getMonetizationForUser = async (req, res) => {
         },
       ]),
     ]);
-
     // Calculate total watch time and total withdrawable amount for the channel
     const totalWatchTimeMinutes = watchHistoryResults.length > 0 ? watchHistoryResults[0].totalWatchTime : 0;
     const totalWatchTimeHours = totalWatchTimeMinutes / 60; // Convert total watch time from minutes to hours
@@ -225,6 +281,7 @@ exports.getMonetizationForUser = async (req, res) => {
   }
 };
 
+
 //get minimum criteria and actual result of particular user (check monetization for user)
 exports.getMonetization = async (req, res) => {
   try {
@@ -241,17 +298,56 @@ exports.getMonetization = async (req, res) => {
       return res.status(200).json({ status: false, message: "you are blocked by admin!" });
     }
 
-    if (!global.settingJSON || !settingJSON.minSubScriber || !settingJSON.minWatchTime) {
-      return res.status(200).json({
-        status: false,
-        message: "minSubScriber and minWatchTime not configured in settings.",
-      });
-    }
+    const currentSettings = global.settingJSON || require("../../setting");
+    const minSubScriber = (currentSettings && currentSettings.minSubScriber) ? currentSettings.minSubScriber : 500;
+    const minWatchTime = (currentSettings && currentSettings.minWatchTime) ? currentSettings.minWatchTime : 3000;
+    const minShortsViews = (currentSettings && currentSettings.minShortsViews) ? currentSettings.minShortsViews : 3000000;
 
-    const [totalSubscribers, watchHistoryResults] = await Promise.all([
-      UserWiseSubscription.countDocuments({ channelId: user.channelId }),
+    const channelIdentifiers = [user.channelId, user._id ? user._id.toString() : null].filter(Boolean);
+
+    // Find all video IDs of this user/channel to ensure accurate matching
+    const userVideos = await Video.find({
+      $or: [
+        { channelId: { $in: channelIdentifiers } },
+        { userId: user._id },
+      ],
+    }).select("_id videoType visibilityType");
+
+    const longVideoIds = userVideos
+      .filter((v) => (v.videoType === 1 || !v.videoType) && (v.visibilityType === 1 || !v.visibilityType))
+      .map((v) => v._id);
+
+    const shortsVideoIds = userVideos
+      .filter((v) => v.videoType === 2 && (v.visibilityType === 1 || !v.visibilityType))
+      .map((v) => v._id);
+
+    const [totalSubscribers, longWatchHistoryResults, shortsViewsResults] = await Promise.all([
+      UserWiseSubscription.countDocuments({ channelId: { $in: channelIdentifiers } }),
       WatchHistory.aggregate([
-        { $match: { videoChannelId: user.channelId } },
+        {
+          $match: {
+            $or: [
+              { videoId: { $in: longVideoIds } },
+              { videoChannelId: { $in: channelIdentifiers } },
+              { videoUserId: user._id },
+            ],
+          },
+        },
+        {
+          $lookup: {
+            from: "videos",
+            localField: "videoId",
+            foreignField: "_id",
+            as: "video",
+          },
+        },
+        { $unwind: "$video" },
+        {
+          $match: {
+            "video.videoType": 1, // long video
+            "video.visibilityType": 1, // public
+          },
+        },
         {
           $group: {
             _id: null,
@@ -259,18 +355,66 @@ exports.getMonetization = async (req, res) => {
           },
         },
       ]),
+      WatchHistory.aggregate([
+        {
+          $match: {
+            $or: [
+              { videoId: { $in: shortsVideoIds } },
+              { videoChannelId: { $in: channelIdentifiers } },
+              { videoUserId: user._id },
+            ],
+          },
+        },
+        {
+          $lookup: {
+            from: "videos",
+            localField: "videoId",
+            foreignField: "_id",
+            as: "video",
+          },
+        },
+        { $unwind: "$video" },
+        {
+          $match: {
+            "video.videoType": 2, // shorts video
+            "video.visibilityType": 1, // public
+          },
+        },
+        {
+          $count: "totalShortsViews",
+        },
+      ]),
     ]);
 
-    // Calculate total watch time and total withdrawable amount for the channel
-    const totalWatchTimeMinutes = watchHistoryResults.length > 0 ? watchHistoryResults[0].totalWatchTime : 0;
-    const totalWatchTimeHours = totalWatchTimeMinutes / 60; // Convert total watch time from minutes to hours
+    // Calculate total watch time of public long videos
+    const totalWatchTimeMinutes = longWatchHistoryResults.length > 0 ? (longWatchHistoryResults[0].totalWatchTime || 0) : 0;
+    const maxWatchTimeMinutes = Math.max(totalWatchTimeMinutes, user.totalWatchTime || 0);
+    const totalWatchTimeHours = parseFloat((maxWatchTimeMinutes / 60).toFixed(2));
+    const totalShortsViews = shortsViewsResults.length > 0 ? (shortsViewsResults[0].totalShortsViews || 0) : 0;
+
+    // Check monetization qualification:
+    // Minimum 500 subscribers AND (total 3000 public watch hours for long videos OR total 3 million public shorts views)
+    const hasEnoughSubscribers = totalSubscribers >= minSubScriber;
+    const hasEnoughWatchHoursOrShortsViews = totalWatchTimeHours >= minWatchTime || totalShortsViews >= minShortsViews;
+    const isEligible = hasEnoughSubscribers && hasEnoughWatchHoursOrShortsViews;
+
+    const existRequest = await MonetizationRequest.findOne({ userId: user._id });
+    const isMonetized = Boolean(user.isMonetization || existRequest?.status === 2);
 
     const dataOfMonetization = {
-      minWatchTime: settingJSON.minWatchTime,
-      minSubScriber: settingJSON.minSubScriber,
+      minWatchTime: minWatchTime,
+      minSubScriber: minSubScriber,
+      minShortsViews: minShortsViews,
       totalSubscribers: totalSubscribers,
       totalWatchTime: totalWatchTimeHours,
-      isMonetization: user.isMonetization,
+      totalShortsViews: totalShortsViews,
+      isEligible: isEligible,
+      isMonetization: isMonetized,
+      requestStatus: existRequest ? existRequest.status : null,
+      requestReason: existRequest ? (existRequest.reason || "") : "",
+      idProof: existRequest ? (existRequest.idProof || "") : "",
+      selfie: existRequest ? (existRequest.selfie || "") : "",
+      idProofType: existRequest ? (existRequest.idProofType || "") : "",
     };
 
     return res.status(200).json({

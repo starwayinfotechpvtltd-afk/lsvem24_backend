@@ -159,3 +159,38 @@ exports.getSaveToWatchLater = async (req, res) => {
     return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
   }
 };
+
+//user wise remove video from saveToWatchLater
+exports.removeVideoFromWatchLater = async (req, res) => {
+  try {
+    const userId = req.query.userId || req.body.userId;
+    const videoId = req.query.videoId || req.body.videoId;
+
+    if (!userId || !videoId) {
+      return res.status(200).json({ status: false, message: "Oops ! Invalid details!!" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(videoId)) {
+      return res.status(200).json({ status: false, message: "Invalid userId or videoId format!" });
+    }
+
+    const saveToWatchLater = await SaveToWatchLater.findOneAndDelete({
+      userId: new mongoose.Types.ObjectId(userId),
+      videoId: new mongoose.Types.ObjectId(videoId),
+    });
+
+    if (!saveToWatchLater) {
+      return res.status(200).json({ status: false, message: "Video not found in watch later!" });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Video successfully removed from watch later!",
+      data: saveToWatchLater,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
+  }
+};
+

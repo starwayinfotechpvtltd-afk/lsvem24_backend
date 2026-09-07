@@ -245,7 +245,19 @@ const trackAdClick = async (req, res) => {
 /** Active ads for long-form video (pre-roll / mid-roll). */
 const getLongVideoAds = async (req, res) => {
   try {
-    const { placement } = req.query;
+    const { placement, userId } = req.query;
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const user = await User.findById(userId).select("isPremiumPlan plan");
+      if (user && user.isPremiumPlan) {
+        return res.status(200).json({
+          message: "User has an active premium plan. Ads disabled.",
+          status: true,
+          ads: [],
+        });
+      }
+    }
+
     const now = new Date();
     const query = {
       isActive: true,
@@ -291,6 +303,19 @@ const getLongVideoAds = async (req, res) => {
 /** Active ads eligible for the shorts vertical feed (image and/or video). */
 const getShortsFeedAds = async (req, res) => {
   try {
+    const { userId } = req.query;
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const user = await User.findById(userId).select("isPremiumPlan plan");
+      if (user && user.isPremiumPlan) {
+        return res.status(200).json({
+          message: "User has an active premium plan. Ads disabled.",
+          status: true,
+          ads: [],
+        });
+      }
+    }
+
     const now = new Date();
     const ads = await VideoAd.find({
       isActive: true,

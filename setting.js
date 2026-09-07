@@ -1,35 +1,40 @@
 module.exports = {
-  "_id": "68c2a9ff60a001bcf1ffdfed",
+  "storage": {
+    "local": true,
+    "awsS3": false,
+    "digitalOcean": false
+  },
+  "currency": {
+    "name": "INR",
+    "symbol": "₹",
+    "countryCode": "IN",
+    "currencyCode": "INR",
+    "isDefault": true
+  },
+  "_id": "6a3651d1b814d331437ad9a4",
   "stripePublishableKey": "",
   "stripeSecretKey": "",
   "razorPayId": "",
   "razorSecretKey": "",
   "stripeSwitch": true,
   "razorPaySwitch": true,
-  "privacyPolicyLink": "https://www.termsfeed.com/live/7792dfea-0768-48ea-9261-ef472318708e",
-  "privacyPolicyText": "PRIVACY POLICY TEXT",
+  "privacyPolicyLink": "https://mefigureceleb.com/privacy-policy/",
+  "privacyPolicyText": "Lsvem24 Privacy Policy Original",
   "adminCommissionOfPaidChannel": 0,
   "adminCommissionOfPaidVideo": 0,
   "durationOfShorts": 60000,
   "createdAt": "2023-08-08T12:48:46.902Z",
-  "updatedAt": "2025-06-17T12:25:23.113Z",
+  "updatedAt": "2026-09-07T10:17:15.437Z",
   "minWithdrawalRequestedAmount": 10,
-  "zegoAppId": "zegoAppId",
-  "zegoAppSignIn": "zegoAppSignIn",
+  "zegoAppId": "1404962986",
+  "zegoAppSignIn": "0793d80b0d876d019b87523cf6237b012290f2b510c81d90f50f8eac8431fdca",
   "googlePlaySwitch": true,
   "earningPerHour": 2,
-  "minSubScriber": 1,
-  "minWatchTime": 1,
+  "minSubScriber": 500,
+  "minWatchTime": 3000,
   "isMonetization": true,
   "adDisplayIndex": 2,
-  "currency": {
-    "name": "USD",
-    "symbol": "$",
-    "countryCode": "USA",
-    "currencyCode": "USD",
-    "isDefault": true
-  },
-  "flutterWaveId": "FLWPUBK_TEST-cdc51a4df113a91fe33a914eaf8d1c75-X",
+  "flutterWaveId": "",
   "flutterWaveSwitch": true,
   "maxAdPerDay": 5,
   "minCoinForCashOut": 100,
@@ -44,11 +49,6 @@ module.exports = {
   "isWatermarkOn": false,
   "watermarkIcon": "",
   "watermarkType": 2,
-  "storage": {
-    "local": true,
-    "awsS3": false,
-    "digitalOcean": false
-  },
   "resendApiKey": "resendApiKey",
   "awsAccessKey": "AWS ACCESS",
   "awsBucketName": "AWS BUCKET UPDATE",
@@ -61,5 +61,6 @@ module.exports = {
   "doEndpoint": "https://bucketname.region.digitaloceanspaces.com",
   "doHostname": "https://region.digitaloceanspaces.com",
   "doRegion": "doRegion",
-  "doSecretKey": "doSecretKey"
+  "doSecretKey": "doSecretKey",
+  "minShortsViews": 3000000
 };

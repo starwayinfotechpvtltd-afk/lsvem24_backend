@@ -46,8 +46,9 @@ exports.update = async (req, res) => {
     setting.stripePublishableKey = req.body.stripePublishableKey ? req.body.stripePublishableKey : setting.stripePublishableKey;
     setting.stripeSecretKey = req.body.stripeSecretKey ? req.body.stripeSecretKey : setting.stripeSecretKey;
 
-    setting.razorPayId = req.body.razorPayId ? req.body.razorPayId : setting.razorPayId;
-    setting.razorSecretKey = req.body.razorSecretKey ? req.body.razorSecretKey : setting.razorSecretKey;
+    // Razorpay details are loaded strictly from .env and not stored in database
+    setting.razorPayId = "";
+    setting.razorSecretKey = "";
 
     setting.flutterWaveId = req.body.flutterWaveId ? req.body.flutterWaveId : setting.flutterWaveId;
 
@@ -72,6 +73,7 @@ exports.update = async (req, res) => {
     setting.maxAdPerDay = req.body.maxAdPerDay ? parseInt(req.body.maxAdPerDay) : setting.maxAdPerDay;
     setting.minWatchTime = req.body.minWatchTime ? parseInt(req.body.minWatchTime) : setting.minWatchTime;
     setting.minSubScriber = req.body.minSubScriber ? parseInt(req.body.minSubScriber) : setting.minSubScriber;
+    setting.minShortsViews = req.body.minShortsViews ? parseInt(req.body.minShortsViews) : setting.minShortsViews;
     setting.adDisplayIndex = req.body.adDisplayIndex ? parseInt(req.body.adDisplayIndex) : setting.adDisplayIndex;
 
     setting.doEndpoint = req.body.doEndpoint ? req.body.doEndpoint : setting.doEndpoint;

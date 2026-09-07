@@ -24,6 +24,18 @@ exports.get = async (req, res) => {
       ...toPlainDoc(advertise),
     };
 
+    // Take Razorpay details strictly from environment variables (.env)
+    const rzpSwitch = process.env.RAZORPAY_SWITCH;
+    const isRzpSwitchEnabled =
+      rzpSwitch === undefined || rzpSwitch === "true" || rzpSwitch === true;
+    settingPayload.razorPayId = process.env.RAZORPAY_KEY_ID || "";
+    settingPayload.razorPaySwitch = Boolean(
+      process.env.RAZORPAY_KEY_ID &&
+      process.env.RAZORPAY_KEY_SECRET &&
+      isRzpSwitchEnabled
+    );
+    delete settingPayload.razorSecretKey;
+
     return res.status(200).json({
       status: true,
       message: "Success",

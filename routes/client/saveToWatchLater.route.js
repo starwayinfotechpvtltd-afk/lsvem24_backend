@@ -13,4 +13,9 @@ route.post("/addVideoToWatchLater", checkAccessWithSecretKey(), SaveToWatchContr
 //get all saveToWatchLater videos for that user
 route.get("/getSaveToWatchLater", checkAccessWithSecretKey(), SaveToWatchController.getSaveToWatchLater);
 
+//user wise remove video from saveToWatchLater
+route.post("/removeVideoFromWatchLater", checkAccessWithSecretKey(), SaveToWatchController.removeVideoFromWatchLater);
+route.delete("/removeVideoFromWatchLater", checkAccessWithSecretKey(), SaveToWatchController.removeVideoFromWatchLater);
+
 module.exports = route;
+

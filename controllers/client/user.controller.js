@@ -1082,12 +1082,7 @@ exports.setPassword = async (req, res) => {
 //get particular channel's details (home)
 exports.detailsOfChannel = async (req, res, next) => {
   try {
-    if (
-      !req.query.channelId ||
-      !req.query.userId ||
-      !req.query.start ||
-      !req.query.limit
-    ) {
+    if (!req.query.channelId) {
       return res
         .status(200)
         .json({ status: false, message: "Oops ! Invalid details." });
@@ -1096,26 +1091,48 @@ exports.detailsOfChannel = async (req, res, next) => {
     const start = req.query.start ? parseInt(req.query.start) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 20;
 
-    const userId = new mongoose.Types.ObjectId(req.query.userId);
-    const channelId = req.query.channelId.toString();
+    const channelId = req.query.channelId.toString().trim();
+    const channelQuery = mongoose.Types.ObjectId.isValid(channelId)
+      ? { $or: [{ channelId: channelId }, { _id: new mongoose.Types.ObjectId(channelId) }] }
+      : { channelId: channelId };
+
+    let user = null;
+    let userId = null;
+    if (req.query.userId && req.query.userId.toString().trim() !== "" && mongoose.Types.ObjectId.isValid(req.query.userId)) {
+      userId = new mongoose.Types.ObjectId(req.query.userId);
+      user = await User.findOne({ _id: userId, isActive: true });
+    }
+
+    if (user && user.isBlock) {
+      return res
+        .status(200)
+        .json({ status: false, message: "you are blocked by admin!" });
+    }
+
+    const channel = await User.findOne(channelQuery);
+    if (!channel) {
+      return res
+        .status(200)
+        .json({ status: false, message: "channel does not found!" });
+    }
+
+    const channelIdentifiers = [channel.channelId, channel._id ? channel._id.toString() : null].filter(Boolean);
 
     const [
-      channel,
-      user,
       totalVideosOfChannel,
       isSubscribedChannel,
       totalSubscribers,
       data,
     ] = await Promise.all([
-      User.findOne({ channelId: channelId }),
-      User.findOne({ _id: userId, isActive: true }),
-      Video.countDocuments({ channelId: channelId }),
-      UserWiseSubscription.findOne({ userId: userId, channelId: channelId }),
-      UserWiseSubscription.countDocuments({ channelId: channelId }),
+      Video.countDocuments({ channelId: { $in: channelIdentifiers } }),
+      userId
+        ? UserWiseSubscription.findOne({ userId: userId, channelId: { $in: channelIdentifiers } })
+        : null,
+      UserWiseSubscription.countDocuments({ channelId: { $in: channelIdentifiers } }),
       Video.aggregate([
         {
           $match: {
-            channelId: channelId,
+            channelId: { $in: channelIdentifiers },
             scheduleType: 2,
             visibilityType: 1,
           },
@@ -1123,8 +1140,19 @@ exports.detailsOfChannel = async (req, res, next) => {
         {
           $lookup: {
             from: "users",
-            localField: "channelId",
-            foreignField: "channelId",
+            let: { vChannelId: "$channelId" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $or: [
+                      { $eq: ["$channelId", "$$vChannelId"] },
+                      { $eq: [{ $toString: "$_id" }, "$$vChannelId"] },
+                    ],
+                  },
+                },
+              },
+            ],
             as: "channel",
           },
         },
@@ -1134,55 +1162,51 @@ exports.detailsOfChannel = async (req, res, next) => {
             preserveNullAndEmptyArrays: true,
           },
         },
-        {
-          $lookup: {
-            from: "userwisesubscriptions",
-            let: {
-              channelId: "$channel.channelId",
-              userId: userId,
-            },
-            pipeline: [
+        ...(userId
+          ? [
               {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ["$channelId", "$$channelId"] },
-                      { $eq: ["$userId", "$$userId"] },
-                    ],
+                $lookup: {
+                  from: "userwisesubscriptions",
+                  let: {
+                    subChannelId: "$channel.channelId",
+                    subUserId: userId,
                   },
+                  pipeline: [
+                    {
+                      $match: {
+                        $expr: {
+                          $and: [
+                            { $eq: ["$channelId", "$$subChannelId"] },
+                            { $eq: ["$userId", "$$subUserId"] },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                  as: "isSubscribed",
                 },
               },
-            ],
-            as: "isSubscribed",
-          },
-        },
-        {
-          $lookup: {
-            from: "watchhistories",
-            localField: "_id",
-            foreignField: "videoId",
-            as: "views",
-          },
-        },
-        {
-          $lookup: {
-            from: "savetowatchlaters",
-            let: { videoId: "$_id", userId: userId },
-            pipeline: [
               {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ["$videoId", "$$videoId"] },
-                      { $eq: ["$userId", "$$userId"] },
-                    ],
-                  },
+                $lookup: {
+                  from: "savetowatchlaters",
+                  let: { videoId: "$_id", saveUserId: userId },
+                  pipeline: [
+                    {
+                      $match: {
+                        $expr: {
+                          $and: [
+                            { $eq: ["$videoId", "$$videoId"] },
+                            { $eq: ["$userId", "$$saveUserId"] },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                  as: "isSaveToWatchLater",
                 },
               },
-            ],
-            as: "isSaveToWatchLater",
-          },
-        },
+            ]
+          : []),
         {
           $project: {
             title: 1,
@@ -1193,83 +1217,72 @@ exports.detailsOfChannel = async (req, res, next) => {
             channelId: 1,
             videoPrivacyType: 1,
             createdAt: 1,
-            channelType: "$channel.channelType",
-            subscriptionCost: "$channel.subscriptionCost",
-            videoUnlockCost: "$channel.videoUnlockCost",
-            views: { $size: "$views" },
-            isSubscribed: {
-              $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
-            },
-            isSaveToWatchLater: {
+            channelType: {
               $cond: [
-                { $eq: [{ $size: "$isSaveToWatchLater" }, 0] },
-                false,
-                true,
+                { $eq: ["$channel.channelType", 2] },
+                2,
+                { $cond: [{ $eq: ["$channel.channelType", "2"] }, 2, 1] },
               ],
             },
+            subscriptionCost: { $ifNull: ["$channel.subscriptionCost", 10] },
+            videoUnlockCost: { $ifNull: ["$channel.videoUnlockCost", 10] },
+            views: 1,
+            isSubscribed: userId
+              ? { $cond: [{ $gt: [{ $size: { $ifNull: ["$isSubscribed", []] } }, 0] }, true, false] }
+              : { $literal: false },
+            isSaveToWatchLater: userId
+              ? { $cond: [{ $gt: [{ $size: { $ifNull: ["$isSaveToWatchLater", []] } }, 0] }, true, false] }
+              : { $literal: false },
           },
         },
+        {
+          $lookup: {
+            from: "watchhistories",
+            localField: "_id",
+            foreignField: "videoId",
+            as: "viewsList",
+          },
+        },
+        {
+          $addFields: {
+            views: { $size: "$viewsList" },
+          },
+        },
+        { $project: { viewsList: 0 } },
         { $sort: { createdAt: -1 } },
         { $skip: (start - 1) * limit },
         { $limit: limit },
       ]),
     ]);
 
-    if (!channel) {
-      return res
-        .status(200)
-        .json({ status: false, message: "channel does not found!" });
-    }
-
-    if (!user) {
-      return res
-        .status(200)
-        .json({ status: false, message: "User does not found!" });
-    }
-
-    if (user.isBlock) {
-      return res
-        .status(200)
-        .json({ status: false, message: "you are blocked by admin!" });
-    }
-
-    const [
-      isSubscribed,
-      channelName,
-      channelImage,
-      channelType,
-      subscriptionCost,
-      videoUnlockCost,
-    ] = await Promise.all([
-      isSubscribedChannel ? true : false,
-      channel.fullName,
-      channel.image,
-      channel.channelType,
-      channel.subscriptionCost,
-      channel.videoUnlockCost,
-    ]);
+    const isSubscribed = isSubscribedChannel ? true : false;
+    const channelName = channel.fullName || "";
+    const channelImage = channel.image || "";
+    const parsedChannelType = Number(channel.channelType) === 2 ? 2 : 1;
+    const subscriptionCost = Number(channel.subscriptionCost) || 10;
+    const videoUnlockCost = Number(channel.videoUnlockCost) || 10;
 
     let now = dayjs();
-    const channelData = data?.map((data) => ({
-      ...data,
+    const channelData = data?.map((item) => ({
+      ...item,
       time:
-        now.diff(data.createdAt, "minute") === 0
+        now.diff(item.createdAt, "minute") === 0
           ? "Just Now"
-          : now.diff(data.createdAt, "minute") <= 60 &&
-              now.diff(data.createdAt, "minute") >= 0
-            ? now.diff(data.createdAt, "minute") + " minutes ago"
-            : now.diff(data.createdAt, "hour") >= 24
-              ? now.diff(data.createdAt, "day") >= 365
-                ? Math.floor(now.diff(data.createdAt, "day") / 365) +
+          : now.diff(item.createdAt, "minute") <= 60 &&
+              now.diff(item.createdAt, "minute") >= 0
+            ? now.diff(item.createdAt, "minute") + " minutes ago"
+            : now.diff(item.createdAt, "hour") >= 24
+              ? now.diff(item.createdAt, "day") >= 365
+                ? Math.floor(now.diff(item.createdAt, "day") / 365) +
                   " years ago"
-                : now.diff(data.createdAt, "day") >= 30
-                  ? Math.floor(now.diff(data.createdAt, "day") / 30) +
+                : now.diff(item.createdAt, "day") >= 30
+                  ? Math.floor(now.diff(item.createdAt, "day") / 30) +
                     " months ago"
-                  : now.diff(data.createdAt, "day") >= 7
-                    ? Math.floor(now.diff(data.createdAt, "day") / 7) +
+                  : now.diff(item.createdAt, "day") >= 7
+                    ? Math.floor(now.diff(item.createdAt, "day") / 7) +
                       " weeks ago"
-                    : now.diff(data.createdAt, "day") + " days ago"
-              : now.diff(data.createdAt, "hour") + " hours ago",
+                    : now.diff(item.createdAt, "day") + " days ago"
+              : now.diff(item.createdAt, "hour") + " hours ago",
     }));
 
     return res.status(200).json({
@@ -1280,10 +1293,10 @@ exports.detailsOfChannel = async (req, res, next) => {
       isSubscribed: isSubscribed,
       channelName: channelName,
       channelImage: channelImage,
-      channelType: channelType,
+      channelType: parsedChannelType,
       subscriptionCost: subscriptionCost,
       videoUnlockCost: videoUnlockCost,
-      detailsOfChannel: channelData.length > 0 ? channelData : [],
+      detailsOfChannel: channelData && channelData.length > 0 ? channelData : [],
     });
   } catch (error) {
     console.log(error);
@@ -1297,11 +1310,8 @@ exports.detailsOfChannel = async (req, res, next) => {
 exports.videosOfChannel = async (req, res) => {
   try {
     if (
-      !req.query.userId ||
       !req.query.channelId ||
-      !req.query.videoType ||
-      !req.query.start ||
-      !req.query.limit
+      !req.query.videoType
     ) {
       return res
         .status(200)
@@ -1310,128 +1320,158 @@ exports.videosOfChannel = async (req, res) => {
 
     const start = req.query.start ? parseInt(req.query.start) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-    const userId = new mongoose.Types.ObjectId(req.query.userId);
 
-    const [user, channel, data] = await Promise.all([
-      User.findOne({ _id: userId, isActive: true }),
-      User.findOne({ channelId: req.query.channelId }),
-      Video.aggregate([
-        {
-          $match: {
-            channelId: req.query.channelId,
-            videoType: Number(req.query.videoType),
-            isActive: true,
-            scheduleType: 2,
-          },
-        },
-        {
-          $lookup: {
-            from: "users",
-            localField: "channelId",
-            foreignField: "channelId",
-            as: "channel",
-          },
-        },
-        {
-          $unwind: {
-            path: "$channel",
-            preserveNullAndEmptyArrays: true,
-          },
-        },
-        {
-          $lookup: {
-            from: "watchhistories",
-            localField: "_id",
-            foreignField: "videoId",
-            as: "views",
-          },
-        },
-        {
-          $lookup: {
-            from: "userwisesubscriptions",
-            let: {
-              channelId: "$channel.channelId",
-              userId: userId,
-            },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ["$channelId", "$$channelId"] },
-                      { $eq: ["$userId", "$$userId"] },
-                    ],
-                  },
-                },
-              },
-            ],
-            as: "isSubscribed",
-          },
-        },
-        {
-          $project: {
-            title: 1,
-            videoType: 1,
-            videoTime: 1,
-            videoUrl: 1,
-            videoImage: 1,
-            channelId: 1,
-            createdAt: 1,
-            videoPrivacyType: 1,
-            channelType: "$channel.channelType",
-            subscriptionCost: "$channel.subscriptionCost",
-            videoUnlockCost: "$channel.videoUnlockCost",
-            views: { $size: "$views" },
-            isSubscribed: {
-              $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
-            },
-          },
-        },
-        { $sort: { createdAt: -1 } },
-        { $skip: (start - 1) * limit },
-        { $limit: limit },
-      ]),
-    ]);
+    const channelId = req.query.channelId.toString().trim();
+    const channelQuery = mongoose.Types.ObjectId.isValid(channelId)
+      ? { $or: [{ channelId: channelId }, { _id: new mongoose.Types.ObjectId(channelId) }] }
+      : { channelId: channelId };
 
-    if (!user) {
-      return res
-        .status(200)
-        .json({ status: false, message: "User does not found!" });
+    let user = null;
+    let userId = null;
+    if (req.query.userId && req.query.userId.toString().trim() !== "" && mongoose.Types.ObjectId.isValid(req.query.userId)) {
+      userId = new mongoose.Types.ObjectId(req.query.userId);
+      user = await User.findOne({ _id: userId, isActive: true });
     }
 
-    if (user.isBlock) {
+    if (user && user.isBlock) {
       return res
         .status(200)
         .json({ status: false, message: "you are blocked by admin!" });
     }
 
+    const channel = await User.findOne(channelQuery);
     if (!channel) {
       return res
         .status(200)
         .json({ status: false, message: "channel does not found!" });
     }
 
+    const channelIdentifiers = [channel.channelId, channel._id ? channel._id.toString() : null].filter(Boolean);
+
+    const data = await Video.aggregate([
+      {
+        $match: {
+          channelId: { $in: channelIdentifiers },
+          videoType: Number(req.query.videoType),
+          isActive: true,
+          scheduleType: 2,
+        },
+      },
+      {
+        $lookup: {
+          from: "users",
+          let: { vChannelId: "$channelId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ["$channelId", "$$vChannelId"] },
+                    { $eq: [{ $toString: "$_id" }, "$$vChannelId"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "channel",
+        },
+      },
+      {
+        $unwind: {
+          path: "$channel",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: "watchhistories",
+          localField: "_id",
+          foreignField: "videoId",
+          as: "viewsList",
+        },
+      },
+      {
+        $addFields: {
+          views: { $size: "$viewsList" },
+        },
+      },
+      ...(userId
+        ? [
+            {
+              $lookup: {
+                from: "userwisesubscriptions",
+                let: {
+                  subChannelId: "$channel.channelId",
+                  subUserId: userId,
+                },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$channelId", "$$subChannelId"] },
+                          { $eq: ["$userId", "$$subUserId"] },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                as: "isSubscribed",
+              },
+            },
+          ]
+        : []),
+      {
+        $project: {
+          title: 1,
+          videoType: 1,
+          videoTime: 1,
+          videoUrl: 1,
+          videoImage: 1,
+          channelId: 1,
+          createdAt: 1,
+          videoPrivacyType: 1,
+          channelType: {
+            $cond: [
+              { $eq: ["$channel.channelType", 2] },
+              2,
+              { $cond: [{ $eq: ["$channel.channelType", "2"] }, 2, 1] },
+            ],
+          },
+          subscriptionCost: { $ifNull: ["$channel.subscriptionCost", 10] },
+          videoUnlockCost: { $ifNull: ["$channel.videoUnlockCost", 10] },
+          views: 1,
+          isSubscribed: userId
+            ? { $cond: [{ $gt: [{ $size: { $ifNull: ["$isSubscribed", []] } }, 0] }, true, false] }
+            : { $literal: false },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      { $skip: (start - 1) * limit },
+      { $limit: limit },
+    ]);
+
     let now = dayjs();
-    const videosTypeWiseOfChannel = data.map((data) => ({
-      ...data,
+    const videosTypeWiseOfChannel = data.map((item) => ({
+      ...item,
       time:
-        now.diff(data.createdAt, "minute") === 0
+        now.diff(item.createdAt, "minute") === 0
           ? "Just Now"
-          : now.diff(data.createdAt, "minute") <= 60 &&
-              now.diff(data.createdAt, "minute") >= 0
-            ? now.diff(data.createdAt, "minute") + " minutes ago"
-            : now.diff(data.createdAt, "hour") >= 24
-              ? now.diff(data.createdAt, "day") >= 365
-                ? Math.floor(now.diff(data.createdAt, "day") / 365) +
+          : now.diff(item.createdAt, "minute") <= 60 &&
+              now.diff(item.createdAt, "minute") >= 0
+            ? now.diff(item.createdAt, "minute") + " minutes ago"
+            : now.diff(item.createdAt, "hour") >= 24
+              ? now.diff(item.createdAt, "day") >= 365
+                ? Math.floor(now.diff(item.createdAt, "day") / 365) +
                   " years ago"
-                : now.diff(data.createdAt, "day") >= 30
-                  ? Math.floor(now.diff(data.createdAt, "day") / 30) +
+                : now.diff(item.createdAt, "day") >= 30
+                  ? Math.floor(now.diff(item.createdAt, "day") / 30) +
                     " months ago"
-                  : now.diff(data.createdAt, "day") >= 7
-                    ? Math.floor(now.diff(data.createdAt, "day") / 7) +
+                  : now.diff(item.createdAt, "day") >= 7
+                    ? Math.floor(now.diff(item.createdAt, "day") / 7) +
                       " weeks ago"
-                    : now.diff(data.createdAt, "day") + " days ago"
-              : now.diff(data.createdAt, "hour") + " hours ago",
+                    : now.diff(item.createdAt, "day") + " days ago"
+              : now.diff(item.createdAt, "hour") + " hours ago",
     }));
 
     return res.status(200).json({
@@ -1451,12 +1491,7 @@ exports.videosOfChannel = async (req, res) => {
 //get particular's channel's playLists (another or own channel's playlist)
 exports.playListsOfChannel = async (req, res, next) => {
   try {
-    if (
-      !req.query.userId ||
-      !req.query.channelId ||
-      !req.query.start ||
-      !req.query.limit
-    ) {
+    if (!req.query.channelId) {
       return res
         .status(200)
         .json({ status: false, message: "Oops ! Invalid details." });
@@ -1464,137 +1499,163 @@ exports.playListsOfChannel = async (req, res, next) => {
 
     const start = req.query.start ? parseInt(req.query.start) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit) : 50;
-    const userId = new mongoose.Types.ObjectId(req.query.userId);
 
-    const [user, channel, data] = await Promise.all([
-      User.findOne({ _id: userId, isActive: true }),
-      User.findOne({ channelId: req.query.channelId }),
-      PlayList.aggregate([
-        {
-          $match: {
-            channelId: req.query.channelId,
-          },
-        },
-        {
-          $lookup: {
-            from: "videos",
-            localField: "videoId",
-            foreignField: "_id",
-            as: "video",
-          },
-        },
-        {
-          $unwind: "$video",
-        },
-        {
-          $lookup: {
-            from: "users",
-            localField: "video.channelId",
-            foreignField: "channelId",
-            as: "channel",
-          },
-        },
-        {
-          $unwind: "$channel",
-        },
-        {
-          $lookup: {
-            from: "userwisesubscriptions",
-            let: {
-              channelId: "$channel.channelId",
-              userId: userId,
-            },
-            pipeline: [
-              {
-                $match: {
-                  $expr: {
-                    $and: [
-                      { $eq: ["$channelId", "$$channelId"] },
-                      { $eq: ["$userId", "$$userId"] },
-                    ],
-                  },
-                },
-              },
-            ],
-            as: "isSubscribed",
-          },
-        },
-        {
-          $project: {
-            channelId: 1,
-            userId: 1,
-            playListName: 1,
-            playListType: 1,
-            channelName: "$channel.fullName",
-            channelType: "$channel.channelType",
-            subscriptionCost: "$channel.subscriptionCost",
-            videoUnlockCost: "$channel.videoUnlockCost",
-            videoId: "$video._id",
-            videoPrivacyType: "$video.videoPrivacyType",
-            videoTitle: "$video.title",
-            videoUrl: "$video.videoUrl",
-            videoImage: "$video.videoImage",
-            videoTime: "$video.videoTime",
-            isSubscribed: {
-              $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true],
-            },
-          },
-        },
-        {
-          $group: {
-            _id: "$_id",
-            channelId: { $first: "$channelId" },
-            userId: { $first: "$userId" },
-            playListName: { $first: "$playListName" },
-            playListType: { $first: "$playListType" },
-            channelName: { $first: "$channelName" },
-            subscriptionCost: { $first: "$subscriptionCost" },
-            videoUnlockCost: { $first: "$videoUnlockCost" },
-            isSubscribed: { $first: "$isSubscribed" },
-            videos: {
-              $push: {
-                videoId: "$videoId",
-                videoName: "$videoTitle",
-                videoUrl: "$videoUrl",
-                videoImage: "$videoImage",
-                videoTime: "$videoTime",
-                videoPrivacyType: "$videoPrivacyType",
-              },
-            },
-            totalVideo: { $sum: 1 },
-          },
-        },
-        { $sort: { createdAt: -1 } },
-        { $skip: (start - 1) * limit },
-        { $limit: limit },
-      ]),
-    ]);
+    const channelId = req.query.channelId.toString().trim();
+    const channelQuery = mongoose.Types.ObjectId.isValid(channelId)
+      ? { $or: [{ channelId: channelId }, { _id: new mongoose.Types.ObjectId(channelId) }] }
+      : { channelId: channelId };
 
-    if (!user) {
-      return res
-        .status(200)
-        .json({ status: false, message: "User does not found!" });
+    let user = null;
+    let userId = null;
+    if (req.query.userId && req.query.userId.toString().trim() !== "" && mongoose.Types.ObjectId.isValid(req.query.userId)) {
+      userId = new mongoose.Types.ObjectId(req.query.userId);
+      user = await User.findOne({ _id: userId, isActive: true });
     }
 
-    if (user.isBlock) {
+    if (user && user.isBlock) {
       return res
         .status(200)
         .json({ status: false, message: "you are blocked by admin!" });
     }
 
+    const channel = await User.findOne(channelQuery);
     if (!channel) {
       return res
         .status(200)
         .json({ status: false, message: "channel does not found." });
     }
 
-    return res
-      .status(200)
-      .json({
-        status: true,
-        message: "get particular's channel's playLists.",
-        playListsOfChannel: data,
-      });
+    const channelIdentifiers = [channel.channelId, channel._id ? channel._id.toString() : null].filter(Boolean);
+
+    const data = await PlayList.aggregate([
+      {
+        $match: {
+          channelId: { $in: channelIdentifiers },
+        },
+      },
+      {
+        $lookup: {
+          from: "videos",
+          localField: "videoId",
+          foreignField: "_id",
+          as: "video",
+        },
+      },
+      {
+        $unwind: "$video",
+      },
+      {
+        $lookup: {
+          from: "users",
+          let: { vChanId: "$video.channelId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $or: [
+                    { $eq: ["$channelId", "$$vChanId"] },
+                    { $eq: [{ $toString: "$_id" }, "$$vChanId"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "channel",
+        },
+      },
+      {
+        $unwind: {
+          path: "$channel",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      ...(userId
+        ? [
+            {
+              $lookup: {
+                from: "userwisesubscriptions",
+                let: {
+                  subChannelId: "$channel.channelId",
+                  subUserId: userId,
+                },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: {
+                        $and: [
+                          { $eq: ["$channelId", "$$subChannelId"] },
+                          { $eq: ["$userId", "$$subUserId"] },
+                        ],
+                      },
+                    },
+                  },
+                ],
+                as: "isSubscribed",
+              },
+            },
+          ]
+        : []),
+      {
+        $project: {
+          channelId: 1,
+          userId: 1,
+          playListName: 1,
+          playListType: 1,
+          channelName: "$channel.fullName",
+          channelType: {
+            $cond: [
+              { $eq: ["$channel.channelType", 2] },
+              2,
+              { $cond: [{ $eq: ["$channel.channelType", "2"] }, 2, 1] },
+            ],
+          },
+          subscriptionCost: { $ifNull: ["$channel.subscriptionCost", 10] },
+          videoUnlockCost: { $ifNull: ["$channel.videoUnlockCost", 10] },
+          videoId: "$video._id",
+          videoPrivacyType: "$video.videoPrivacyType",
+          videoTitle: "$video.title",
+          videoUrl: "$video.videoUrl",
+          videoImage: "$video.videoImage",
+          videoTime: "$video.videoTime",
+          isSubscribed: userId
+            ? { $cond: [{ $gt: [{ $size: { $ifNull: ["$isSubscribed", []] } }, 0] }, true, false] }
+            : { $literal: false },
+        },
+      },
+      {
+        $group: {
+          _id: "$_id",
+          channelId: { $first: "$channelId" },
+          userId: { $first: "$userId" },
+          playListName: { $first: "$playListName" },
+          playListType: { $first: "$playListType" },
+          channelName: { $first: "$channelName" },
+          subscriptionCost: { $first: "$subscriptionCost" },
+          videoUnlockCost: { $first: "$videoUnlockCost" },
+          isSubscribed: { $first: "$isSubscribed" },
+          videos: {
+            $push: {
+              videoId: "$videoId",
+              videoName: "$videoTitle",
+              videoUrl: "$videoUrl",
+              videoImage: "$videoImage",
+              videoTime: "$videoTime",
+              videoPrivacyType: "$videoPrivacyType",
+            },
+          },
+          totalVideo: { $sum: 1 },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      { $skip: (start - 1) * limit },
+      { $limit: limit },
+    ]);
+
+    return res.status(200).json({
+      status: true,
+      message: "get particular's channel's playLists.",
+      playListsOfChannel: data,
+    });
   } catch (error) {
     console.log(error);
     return res
@@ -1612,18 +1673,26 @@ exports.aboutOfChannel = async (req, res) => {
         .json({ status: false, message: "Oops ! Invalid details!!" });
     }
 
-    const [channel, totalViewsOfthatChannelVideos] = await Promise.all([
-      User.findOne({ channelId: req.query.channelId }).select(
-        "fullName descriptionOfChannel socialMediaLinks date country channelId",
-      ),
-      WatchHistory.countDocuments({ videoChannelId: req.query.channelId }),
-    ]);
+    const channelId = req.query.channelId.toString().trim();
+    const channelQuery = mongoose.Types.ObjectId.isValid(channelId)
+      ? { $or: [{ channelId: channelId }, { _id: new mongoose.Types.ObjectId(channelId) }] }
+      : { channelId: channelId };
+
+    const channel = await User.findOne(channelQuery).select(
+      "fullName descriptionOfChannel socialMediaLinks date country channelId",
+    );
 
     if (!channel) {
       return res
         .status(200)
         .json({ status: false, message: "channel does not found!" });
     }
+
+    const channelIdentifiers = [channel.channelId, channel._id ? channel._id.toString() : null].filter(Boolean);
+
+    const totalViewsOfthatChannelVideos = await WatchHistory.countDocuments({
+      videoChannelId: { $in: channelIdentifiers },
+    });
 
     return res.status(200).json({
       status: true,
