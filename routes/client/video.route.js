@@ -45,6 +45,12 @@ route.post(
   videoController.shareCount,
 );
 
+//record video or shorts view
+route.post(
+  "/view",
+  videoController.addView,
+);
+
 //get shorts from home page directly
 route.get(
   "/shortsOfUser",

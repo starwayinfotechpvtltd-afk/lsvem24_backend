@@ -331,6 +331,10 @@ exports.createVideo = async (req, res) => {
     video.uniqueVideoId = uniqueVideoId;
     video.userId = user._id;
     video.isAddByAdmin = false;
+    video.allowRemix =
+      req.body.allowRemix !== undefined && req.body.allowRemix !== null
+        ? String(req.body.allowRemix).toLowerCase() === "true" || req.body.allowRemix === true
+        : true;
 
     if (req.body.scheduleType) {
       video.scheduleType = parseInt(req.body.scheduleType);
@@ -430,6 +434,59 @@ exports.shareCount = async (req, res) => {
     return res.status(200).json({ status: true, message: "When user share video then shareCount increased!", video });
   } catch (error) {
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+  }
+};
+
+//record video or shorts view
+exports.addView = async (req, res) => {
+  try {
+    const videoId = req.query.videoId || req.body.videoId;
+    const userId = req.query.userId || req.body.userId;
+
+    if (!videoId) {
+      return res.status(200).json({ status: false, message: "videoId is required." });
+    }
+
+    const video = await Video.findById(videoId);
+    if (!video) {
+      return res.status(200).json({ status: false, message: "video not found." });
+    }
+
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      const user = await User.findOne({ _id: userId, isActive: true });
+      if (user && !user.isBlock) {
+        const alreadyWatchHistory = await WatchHistory.findOne({ userId: user._id, videoId: video._id });
+        if (!alreadyWatchHistory) {
+          await WatchHistory.create({
+            userId: user._id,
+            videoId: video._id,
+            videoUserId: video.userId,
+            videoChannelId: video.channelId,
+            totalWatchTime: 1,
+            totalWithdrawableAmount: 0,
+          });
+        } else {
+          await WatchHistory.updateOne(
+            { _id: alreadyWatchHistory._id },
+            {
+              $inc: { totalWatchTime: 1 },
+              $set: { updatedAt: new Date() },
+            }
+          );
+        }
+      }
+    }
+
+    const totalViews = await WatchHistory.countDocuments({ videoId: video._id });
+    return res.status(200).json({
+      status: true,
+      message: "View recorded successfully.",
+      views: totalViews,
+      totalViews: totalViews,
+    });
+  } catch (error) {
+    console.log("Error in addView: ", error);
+    return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
   }
 };
 
@@ -1141,6 +1198,7 @@ exports.getVideos = async (req, res) => {
             // userId: 1,
             channelId: 1,
             videoPrivacyType: 1,
+            allowRemix: { $ifNull: ["$allowRemix", true] },
             views: { $size: "$views" },
             channelType: "$channel.channelType",
             subscriptionCost: "$channel.subscriptionCost",
@@ -2596,6 +2654,7 @@ exports.detailsOfVideo = async (req, res) => {
             videoPrivacyType: 1,
             channelId: 1,
             commentType: 1,
+            allowRemix: { $ifNull: ["$allowRemix", true] },
             createdAt: 1,
             channelType: {
               $cond: [

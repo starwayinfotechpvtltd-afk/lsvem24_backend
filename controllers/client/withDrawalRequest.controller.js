@@ -69,12 +69,25 @@ exports.coinToAmountConverter = async (req, res) => {
 
     const userId = new mongoose.Types.ObjectId(req.query.userId);
     const coin = parseInt(req.query.coin);
-    const amount = Math.floor(coin / settingJSON.minCoinForCashOut);
+
+    if (isNaN(coin) || coin <= 0) {
+      return res.status(200).json({ status: false, message: "Please enter a valid coin amount." });
+    }
+
+    // Rate: 100,000 earned coin = 1,000 wallet money (100 earned coin = 1 wallet money)
+    const rate = settingJSON.minCoinForCashOut && settingJSON.minCoinForCashOut > 0 ? settingJSON.minCoinForCashOut : 100;
+    const amount = Math.floor(coin / rate);
+
+    if (amount <= 0) {
+      return res.status(200).json({
+        status: false,
+        message: `Minimum ${rate} earned coins required to convert to 1 wallet money.`,
+      });
+    }
 
     console.log("Coin:", coin);
-    console.log("minCoinForCashOut:", settingJSON.minCoinForCashOut);
-    console.log("Raw amount:", coin / settingJSON.minCoinForCashOut);
-    console.log("Rounded amount:", Math.floor(coin / settingJSON.minCoinForCashOut));
+    console.log("minCoinForCashOut rate:", rate);
+    console.log("Rounded wallet amount:", amount);
 
     const [user, uniqueId] = await Promise.all([User.findOne({ _id: userId, isActive: true }), generateHistoryUniqueId()]);
 
@@ -86,25 +99,31 @@ exports.coinToAmountConverter = async (req, res) => {
       return res.status(200).json({ status: false, message: "you are blocked by admin!" });
     }
 
-    res.status(200).json({ status: true, message: "Coin successfully converted to amount.", data: amount });
-
-    // Deduct from earnedCoin first, then purchasedCoin if any
-    let remainingCoins = Math.abs(coin);
-    let deductEarned = Math.min(user.earnedCoin || 0, remainingCoins);
-    let deductPurchased = 0;
-    remainingCoins -= deductEarned;
-    if (remainingCoins > 0) {
-      deductPurchased = Math.min(user.purchasedCoin || 0, remainingCoins);
+    // Rule: User can only transfer EARNED coin to wallet money
+    const userEarnedCoin = user.earnedCoin || 0;
+    if (coin > userEarnedCoin) {
+      return res.status(200).json({
+        status: false,
+        message: "Insufficient earned coins. Only earned coins can be transferred to wallet money.",
+      });
     }
 
-    const [updatedReceiver, historyEntry] = await Promise.all([
+    const minConvert = settingJSON.minConvertCoin || 100;
+    if (coin < minConvert) {
+      return res.status(200).json({
+        status: false,
+        message: `Minimum ${minConvert} earned coins required to transfer to wallet.`,
+      });
+    }
+
+    // Deduct strictly from earnedCoin and total coin, credit to totalEarningAmount (wallet money)
+    const [updatedUser, historyEntry] = await Promise.all([
       User.findOneAndUpdate(
-        { _id: user._id, coin: { $gt: 0 } },
+        { _id: user._id, earnedCoin: { $gte: coin } },
         {
           $inc: {
             coin: -Math.abs(coin),
-            earnedCoin: -deductEarned,
-            purchasedCoin: -deductPurchased,
+            earnedCoin: -Math.abs(coin),
             totalEarningAmount: amount,
           },
         },
@@ -119,6 +138,21 @@ exports.coinToAmountConverter = async (req, res) => {
         date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
       }).save(),
     ]);
+
+    if (!updatedUser) {
+      return res.status(200).json({
+        status: false,
+        message: "Failed to transfer earned coins. Please try again.",
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Earned coins successfully transferred to wallet money.",
+      data: amount,
+      totalEarningAmount: updatedUser.totalEarningAmount || 0,
+      earnedCoin: updatedUser.earnedCoin || 0,
+    });
   } catch (error) {
     console.log(error);
     return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });

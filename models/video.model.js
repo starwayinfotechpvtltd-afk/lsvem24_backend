@@ -40,6 +40,7 @@ const videoSchema = new mongoose.Schema(
     shareCount: { type: Number, default: 0 }, //when user share the video then shareCount increased
     like: { type: Number, default: 0 },
     dislike: { type: Number, default: 0 },
+    allowRemix: { type: Boolean, default: true },
   },
   {
     timestamps: true,

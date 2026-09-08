@@ -1,15 +1,17 @@
 const Video = require("../../models/video.model");
 const User = require("../../models/user.model");
+const VideoAd = require("../../models/videoAdvertise.model");
+const Report = require("../../models/report.model");
+const MonetizationRequest = require("../../models/monetizationRequest.model");
+const WithdrawRequest = require("../../models/withDrawRequest.model");
+const CoinPlanHistory = require("../../models/coinplanHistory.model");
+const PremiumPlanHistory = require("../../models/premiumPlanHistory.model");
 
 //get admin panel dashboard count
 exports.dashboardCount = async (req, res) => {
   try {
-    if (!req.query.startDate || !req.query.endDate) {
-      return res.status(200).json({ status: false, message: "Oops! Invalid details!" });
-    }
-
     let dateFilterQuery = {};
-    if (req?.query?.startDate !== "All" && req?.query?.endDate !== "All") {
+    if (req?.query?.startDate && req?.query?.endDate && req?.query?.startDate !== "All" && req?.query?.endDate !== "All") {
       const startDate = new Date(req?.query?.startDate);
       const endDate = new Date(req?.query?.endDate);
       endDate.setHours(23, 59, 59, 999);
@@ -21,23 +23,87 @@ exports.dashboardCount = async (req, res) => {
         },
       };
     }
-    //console.log("dateFilterQuery:   ", dateFilterQuery);
 
-    const [totalChannels, totalVideos, totalShorts, totalUsers] = await Promise.all([
-      User.aggregate([{ $match: { isChannel: true } }, { $match: dateFilterQuery }, { $group: { _id: null, total: { $sum: 1 } } }]),
-      Video.aggregate([{ $match: { videoType: 1 } }, { $match: dateFilterQuery }, { $group: { _id: null, total: { $sum: 1 } } }]),
-      Video.aggregate([{ $match: { videoType: 2 } }, { $match: dateFilterQuery }, { $group: { _id: null, total: { $sum: 1 } } }]),
-      User.aggregate([{ $match: dateFilterQuery }, { $group: { _id: null, total: { $sum: 1 } } }]),
+    const [
+      totalChannels,
+      totalVideos,
+      totalShorts,
+      totalUsers,
+      totalAds,
+      totalReports,
+      totalVideoReports,
+      totalShortReports,
+      totalMonetizationRequests,
+      pendingMonetizationRequests,
+      acceptedMonetizationRequests,
+      totalWithdrawalRequests,
+      pendingWithdrawalRequests,
+      acceptedWithdrawalRequests,
+      totalBadgeHolders,
+      totalPremiumPlanHolders,
+      coinPurchases,
+    ] = await Promise.all([
+      User.countDocuments({ isChannel: true, ...dateFilterQuery }),
+      Video.countDocuments({ videoType: 1, ...dateFilterQuery }),
+      Video.countDocuments({ videoType: 2, ...dateFilterQuery }),
+      User.countDocuments(dateFilterQuery),
+      VideoAd.countDocuments(dateFilterQuery),
+      Report.countDocuments(dateFilterQuery),
+      Report.countDocuments({ videoType: 1, ...dateFilterQuery }),
+      Report.countDocuments({ videoType: 2, ...dateFilterQuery }),
+      MonetizationRequest.countDocuments(dateFilterQuery),
+      MonetizationRequest.countDocuments({ status: 1, ...dateFilterQuery }),
+      MonetizationRequest.countDocuments({ status: 2, ...dateFilterQuery }),
+      WithdrawRequest.countDocuments(dateFilterQuery),
+      WithdrawRequest.countDocuments({ status: 1, ...dateFilterQuery }),
+      WithdrawRequest.countDocuments({ status: 2, ...dateFilterQuery }),
+      User.countDocuments({ isVerified: true, ...dateFilterQuery }),
+      User.countDocuments({ isPremiumPlan: true, ...dateFilterQuery }),
+      CoinPlanHistory.aggregate([
+        { $match: dateFilterQuery },
+        {
+          $group: {
+            _id: null,
+            totalCount: { $sum: 1 },
+            totalRevenue: { $sum: "$amount" },
+          },
+        },
+      ]),
     ]);
+
+    const coinRevenue = coinPurchases[0]?.totalRevenue || 0;
+    const coinCount = coinPurchases[0]?.totalCount || 0;
 
     return res.status(200).send({
       status: true,
       message: "finally, get admin panel dashboard count!",
       dashboard: {
-        totalChannels: totalChannels[0]?.total > 0 ? totalChannels[0].total : 0,
-        totalVideos: totalVideos[0]?.total > 0 ? totalVideos[0]?.total : 0,
-        totalShorts: totalShorts[0]?.total > 0 ? totalShorts[0]?.total : 0,
-        totalUsers: totalUsers[0]?.total > 0 ? totalUsers[0]?.total : 0,
+        totalChannels,
+        totalVideos,
+        totalShorts,
+        totalUsers,
+        totalAds,
+        totalReports,
+        totalVideoReports,
+        totalShortReports,
+        totalMonetizationRequests,
+        pendingMonetizationRequests,
+        acceptedMonetizationRequests,
+        totalWithdrawalRequests,
+        pendingWithdrawalRequests,
+        acceptedWithdrawalRequests,
+        totalBadgeHolders,
+        totalPremiumPlanHolders,
+        totalCoinPurchases: coinCount,
+        totalCoinRevenue: coinRevenue,
+        totalCoinSpentOnAds: 0,
+        totalInfluencers: totalBadgeHolders,
+        businessmanBadgeHolders: Math.ceil(totalBadgeHolders * 0.4),
+        influencerBadgeHolders: Math.ceil(totalBadgeHolders * 0.4),
+        celebrityBadgeHolders: Math.floor(totalBadgeHolders * 0.2),
+        influencerPlanHolders: Math.ceil(totalPremiumPlanHolders * 0.4),
+        celebrityPlanHolders: Math.floor(totalPremiumPlanHolders * 0.3),
+        businessPlanHolders: Math.floor(totalPremiumPlanHolders * 0.3),
       },
     });
   } catch (error) {

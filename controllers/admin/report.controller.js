@@ -16,17 +16,17 @@ const { deleteFromStorage } = require("../../util/storageHelper");
 //get all reports of the video or shorts
 exports.getReports = async (req, res) => {
   try {
-    if (!req.query.videoType || !req.query.start || !req.query.limit || !req.query.startDate || !req.query.endDate) {
-      return res.status(200).json({ status: false, message: "Oops ! Invalid details!!" });
+    if (!req.query.videoType) {
+      return res.status(200).json({ status: false, message: "videoType is required!" });
     }
 
-    const start = req.query.start ? parseInt(req.query.start) : 1;
+    const start = req.query.start ? parseInt(req.query.start) : (req.query.page ? parseInt(req.query.page) : 1);
     const limit = req.query.limit ? parseInt(req.query.limit) : 20;
 
     let dateFilterQuery = {};
-    if (req?.query?.startDate !== "All" && req?.query?.endDate !== "All") {
-      const startDate = new Date(req?.query?.startDate);
-      const endDate = new Date(req?.query?.endDate);
+    if (req.query.startDate && req.query.endDate && req.query.startDate !== "All" && req.query.endDate !== "All") {
+      const startDate = new Date(req.query.startDate);
+      const endDate = new Date(req.query.endDate);
       endDate.setHours(23, 59, 59, 999);
 
       dateFilterQuery = {
@@ -36,30 +36,18 @@ exports.getReports = async (req, res) => {
         },
       };
     }
-    //console.log("dateFilterQuery:   ", dateFilterQuery);
 
-    const [totalReports, report] = await Promise.all([
-      Report.aggregate([
-        {
-          $match: { videoType: Number(req.query.videoType) },
-        },
-        {
-          $match: dateFilterQuery,
-        },
-        {
-          $group: {
-            _id: "$videoType",
-            totalReports: { $sum: 1 },
-          },
-        },
-      ]),
+    const matchFilter = {
+      videoType: Number(req.query.videoType),
+      ...dateFilterQuery,
+    };
+
+    const [totalCount, report] = await Promise.all([
+      Report.countDocuments(matchFilter),
 
       Report.aggregate([
         {
-          $match: { videoType: Number(req.query.videoType) },
-        },
-        {
-          $match: dateFilterQuery,
+          $match: matchFilter,
         },
         {
           $lookup: {
@@ -73,12 +61,6 @@ exports.getReports = async (req, res) => {
           $unwind: {
             path: "$user",
             preserveNullAndEmptyArrays: true,
-          },
-        },
-        {
-          $match: {
-            "user.isActive": true,
-            "user.isBlock": false,
           },
         },
         {
@@ -96,25 +78,23 @@ exports.getReports = async (req, res) => {
           },
         },
         {
-          $match: {
-            "video.isActive": true,
-          },
-        },
-        {
           $project: {
             reportType: 1,
+            videoType: 1,
             createdAt: 1,
-            uniqueId: "$user.uniqueId",
-            fullName: "$user.fullName",
-            nickName: "$user.nickName",
-            image: "$user.image",
-            videoTitle: "$video.title",
-            videoImage: "$video.videoImage",
-            uniqueVideoId: "$video.uniqueVideoId",
+            userId: { $ifNull: ["$user._id", "$userId"] },
+            uniqueId: { $ifNull: ["$user.uniqueId", "N/A"] },
+            fullName: { $ifNull: ["$user.fullName", "Reported User"] },
+            nickName: { $ifNull: ["$user.nickName", ""] },
+            image: { $ifNull: ["$user.image", ""] },
+            videoId: { $ifNull: ["$video._id", "$videoId"] },
+            videoTitle: { $ifNull: ["$video.title", "Reported Content"] },
+            videoImage: { $ifNull: ["$video.videoImage", ""] },
+            uniqueVideoId: { $ifNull: ["$video.uniqueVideoId", "N/A"] },
           },
         },
         { $sort: { createdAt: -1 } },
-        { $skip: (start - 1) * limit }, //how many records you want to skip
+        { $skip: (start - 1) * limit },
         { $limit: limit },
       ]),
     ]);
@@ -122,7 +102,7 @@ exports.getReports = async (req, res) => {
     return res.status(200).json({
       status: true,
       message: "finally, get reports of the video or shorts!",
-      totalReports: totalReports.length > 0 ? totalReports[0].totalReports : 0,
+      totalReports: totalCount,
       reports: report.length > 0 ? report : [],
     });
   } catch (error) {

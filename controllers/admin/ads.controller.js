@@ -1,6 +1,8 @@
 const VideoAd = require("../../models/videoAdvertise.model");
+const Zone = require("../../models/zone.model");
+const User = require("../../models/user.model");
 const { generateUniqueAdsId } = require("../../util/generateUniqueAdsId");
-const mongoose=require("mongoose")
+const mongoose = require("mongoose");
 
 // ─── CREATE ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +66,6 @@ exports.createAd = async (req, res) => {
 
 exports.getAllAds = async (req, res) => {
   try {
-    console.log("Query", req.query);
     const {
       page = 1,
       limit = 10,
@@ -74,6 +75,8 @@ exports.getAllAds = async (req, res) => {
       search,
       sortBy = "createdAt",
       order = "desc",
+      startDate,
+      endDate,
     } = req.query;
 
     const filter = {};
@@ -83,7 +86,7 @@ exports.getAllAds = async (req, res) => {
     }
 
     if (isActive !== undefined && isActive !== "" && isActive !== "All") {
-      filter.isActive = isActive === "true";
+      filter.isActive = isActive === "true" || isActive === true;
     }
 
     if (search && search !== "All" && search.trim() !== "") {
@@ -93,30 +96,41 @@ exports.getAllAds = async (req, res) => {
       ];
     }
 
-    console.log("Final Filter:", filter);
+    if (startDate && endDate && startDate !== "All" && endDate !== "All") {
+      const sDate = new Date(startDate);
+      const eDate = new Date(endDate);
+      eDate.setHours(23, 59, 59, 999);
+      filter.createdAt = {
+        $gte: sDate,
+        $lte: eDate,
+      };
+    }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+    const skip = (pageNum - 1) * limitNum;
     const sortOrder = order === "asc" ? 1 : -1;
 
     const [ads, total] = await Promise.all([
       VideoAd.find(filter)
+        .populate("userId", "fullName nickName image uniqueId")
         .populate("zones", "name")
         .sort({ [sortBy]: sortOrder })
         .skip(skip)
-        .limit(Number(limit)),
+        .limit(limitNum),
       VideoAd.countDocuments(filter),
     ]);
-
-    console.log("All ads", ads);
 
     res.status(200).json({
       success: true,
       data: ads,
+      ads: ads,
+      totalVideo: total,
       pagination: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit)),
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
       },
     });
   } catch (err) {

@@ -11,20 +11,16 @@ const admin = require("../../util/privateKey");
 
 exports.index = async (req, res) => {
   try {
-    if (!req.query.startDate || !req.query.endDate || !req.query.type) {
-      return res.status(200).json({ status: false, message: "Oops! Invalid details!" });
-    }
-
-    const start = req.query.start ? parseInt(req.query.start) : 1;
+    const start = req.query.start ? parseInt(req.query.start) : (req.query.page ? parseInt(req.query.page) : 1);
     const limit = req.query.limit ? parseInt(req.query.limit) : 20;
 
     let typeQuery = {};
-    if (req.query.type !== "All") {
+    if (req.query.type && req.query.type !== "All") {
       typeQuery.status = parseInt(req.query.type);
     }
 
     let dateFilterQuery = {};
-    if (req?.query?.startDate !== "All" && req?.query?.endDate !== "All") {
+    if (req?.query?.startDate && req?.query?.endDate && req?.query?.startDate !== "All" && req?.query?.endDate !== "All") {
       const startDate = new Date(req?.query?.startDate);
       const endDate = new Date(req?.query?.endDate);
       endDate.setHours(23, 59, 59, 999);
@@ -47,7 +43,7 @@ exports.index = async (req, res) => {
         ...dateFilterQuery,
         ...typeQuery,
       })
-        .populate("userId", "fullName nickName image")
+        .populate("userId", "fullName nickName image uniqueId")
         .skip((start - 1) * limit)
         .limit(limit)
         .sort({ createdAt: -1 }),
@@ -106,19 +102,27 @@ exports.acceptWithdrawalRequest = async (req, res) => {
       request,
     });
 
-    const earningPerHour = global.settingJSON.earningPerHour;
-    const requestAmount = parseFloat(request.requestAmount);
-    const hoursOfPayment = requestAmount / earningPerHour;
-    const minutesToCut = hoursOfPayment * 60;
+    const earningPerHour = global.settingJSON?.earningPerHour || 0;
+    const requestAmount = parseFloat(request.requestAmount) || 0;
+    let minutesToCut = 0;
+    if (earningPerHour > 0) {
+      const hoursOfPayment = requestAmount / earningPerHour;
+      if (isFinite(hoursOfPayment)) {
+        minutesToCut = hoursOfPayment * 60;
+      }
+    }
+
+    const incUpdate = {
+      totalEarningAmount: -Math.abs(requestAmount),
+    };
+    if (minutesToCut > 0) {
+      incUpdate.totalCurrentWatchTime = -minutesToCut;
+    }
 
     await User.updateOne(
-      { _id: user._id, totalEarningAmount: { $gt: 0 } },
+      { _id: user._id },
       {
-        $inc: {
-          totalCurrentWatchTime: -minutesToCut,
-          //totalWithdrawableAmount: -requestAmount,
-          totalEarningAmount: -Math.abs(requestAmount),
-        },
+        $inc: incUpdate,
       }
     );
 

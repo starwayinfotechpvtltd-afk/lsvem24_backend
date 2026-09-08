@@ -1679,7 +1679,7 @@ exports.aboutOfChannel = async (req, res) => {
       : { channelId: channelId };
 
     const channel = await User.findOne(channelQuery).select(
-      "fullName descriptionOfChannel socialMediaLinks date country channelId",
+      "fullName descriptionOfChannel socialMediaLinks date country channelId channelType channelCategory",
     );
 
     if (!channel) {
@@ -2152,11 +2152,28 @@ exports.becomeInfluencer = async (req, res) => {
     const influencerName = req.body.influencerName;
     const influencerType = req.body.influencerType;
     const socialMediaLink = req.body.socialMediaLink || "";
+    const influencerImages = Array.isArray(req.body.influencerImages) ? req.body.influencerImages : [];
+    const productLink = req.body.productLink || "";
+    const productImages = Array.isArray(req.body.productImages) ? req.body.productImages : [];
 
     if (!userId || !influencerName || !influencerType) {
       return res.status(200).json({
         status: false,
         message: "Please fill up all required details (Name and Type)!",
+      });
+    }
+
+    if (influencerImages.length < 2 || influencerImages.length > 5) {
+      return res.status(200).json({
+        status: false,
+        message: "Please upload minimum 2 and maximum 5 images for 'Upload your image'!",
+      });
+    }
+
+    if (productImages.length > 5) {
+      return res.status(200).json({
+        status: false,
+        message: "Maximum 5 product images are allowed!",
       });
     }
 
@@ -2213,6 +2230,12 @@ exports.becomeInfluencer = async (req, res) => {
     user.influencerName = influencerName.trim();
     user.influencerType = normalizedType;
     user.influencerSocialLink = (socialMediaLink || "").trim();
+    user.influencerImages = influencerImages;
+    user.influencerProductLink = (productLink || "").trim();
+    user.influencerProductImages = productImages;
+    if (req.body.isSharePhoneNumber !== undefined) {
+      user.isSharePhoneNumber = Boolean(req.body.isSharePhoneNumber);
+    }
 
     if (user.socialMediaLinks && socialMediaLink && socialMediaLink.trim().length > 0) {
       if (!user.socialMediaLinks.instagramLink) {
@@ -2296,7 +2319,7 @@ exports.getInfluencers = async (req, res) => {
 
     let users = await User.find(query)
       .select(
-        "_id fullName nickName image email mobileNumber country isInfluencer influencerName influencerType influencerSocialLink isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
+        "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerImages influencerProductLink influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
       )
       .sort(sort)
       .limit(100);
@@ -2306,7 +2329,7 @@ exports.getInfluencers = async (req, res) => {
       delete query.$or;
       users = await User.find(query)
         .select(
-          "_id fullName nickName image email mobileNumber country isInfluencer influencerName influencerType influencerSocialLink isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
+          "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerImages influencerProductLink influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
         )
         .sort(sort)
         .limit(50);
@@ -2318,7 +2341,7 @@ exports.getInfluencers = async (req, res) => {
         const count = await UserWiseSubscription.countDocuments({
           $or: [{ channelId: u._id.toString() }, { channelId: u.channelId || "NONE" }],
         });
-        uObj.followerCount = count > 0 ? count : (u.referralCount || 0) + 120;
+        uObj.followerCount = count || 0;
         return uObj;
       })
     );
@@ -2373,15 +2396,24 @@ exports.checkFollowStatus = async (req, res) => {
     });
 
     const isFollowed = !!followRecord;
+    const followerCount = await UserWiseSubscription.countDocuments({
+      $or: [{ channelId: influencer._id.toString() }, { channelId: influencer.channelId || "NONE" }],
+    });
+    const canSharePhone = influencer.isSharePhoneNumber !== false;
 
     return res.status(200).json({
       status: true,
       isFollowed: isFollowed,
+      followerCount: followerCount || 0,
       followCost: followCost,
       influencerType: influencer.influencerType || "Creator",
+      isSharePhoneNumber: canSharePhone,
       email: isFollowed ? influencer.email : undefined,
-      mobileNumber: isFollowed ? influencer.mobileNumber : undefined,
+      mobileNumber: (isFollowed && canSharePhone) ? influencer.mobileNumber : undefined,
       influencerSocialLink: isFollowed ? influencer.influencerSocialLink : undefined,
+      influencerImages: influencer.influencerImages || [],
+      influencerProductLink: influencer.influencerProductLink || "",
+      influencerProductImages: influencer.influencerProductImages || [],
     });
   } catch (error) {
     console.error("checkFollowStatus error:", error);
@@ -2413,6 +2445,11 @@ exports.followInfluencer = async (req, res) => {
       });
     }
 
+    const followerCount = await UserWiseSubscription.countDocuments({
+      $or: [{ channelId: influencer._id.toString() }, { channelId: influencer.channelId || "NONE" }],
+    });
+    const canSharePhone = influencer.isSharePhoneNumber !== false;
+
     // Check if already followed (permanent follow)
     const existingFollow = await UserWiseSubscription.findOne({
       userId: user._id,
@@ -2424,9 +2461,14 @@ exports.followInfluencer = async (req, res) => {
         status: true,
         message: "Already following this influencer! Details are permanently unlocked.",
         isFollowed: true,
+        followerCount: followerCount || 0,
+        isSharePhoneNumber: canSharePhone,
         email: influencer.email,
-        mobileNumber: influencer.mobileNumber,
+        mobileNumber: canSharePhone ? influencer.mobileNumber : undefined,
         influencerSocialLink: influencer.influencerSocialLink,
+        influencerImages: influencer.influencerImages || [],
+        influencerProductLink: influencer.influencerProductLink || "",
+        influencerProductImages: influencer.influencerProductImages || [],
       });
     }
 
@@ -2498,13 +2540,22 @@ exports.followInfluencer = async (req, res) => {
       }).save(),
     ]);
 
+    const updatedFollowerCount = await UserWiseSubscription.countDocuments({
+      $or: [{ channelId: influencer._id.toString() }, { channelId: influencer.channelId || "NONE" }],
+    });
+
     return res.status(200).json({
       status: true,
       isFollowed: true,
+      followerCount: updatedFollowerCount || 0,
       message: `Successfully followed and permanently unlocked ${influencer.influencerName || influencer.fullName}! 🎉`,
+      isSharePhoneNumber: canSharePhone,
       email: influencer.email,
-      mobileNumber: influencer.mobileNumber,
+      mobileNumber: canSharePhone ? influencer.mobileNumber : undefined,
       influencerSocialLink: influencer.influencerSocialLink,
+      influencerImages: influencer.influencerImages || [],
+      influencerProductLink: influencer.influencerProductLink || "",
+      influencerProductImages: influencer.influencerProductImages || [],
       deductedCoins: followCost,
       remainingCoins: user.coin,
     });

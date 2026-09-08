@@ -666,17 +666,39 @@ exports.deleteVideo = async (req, res) => {
 
 exports.getUserVideos = async (req, res) => {
   try {
-    const { userId, page = 1, limit = 20 } = req.query;
+    const { userId } = req.query;
+    const pageNum = req.query.page ? Number(req.query.page) : (req.query.start ? Number(req.query.start) : 1);
+    const limitNum = req.query.limit ? Number(req.query.limit) : 20;
+    const skip = (pageNum - 1) * limitNum;
 
-    const skip = (Number(page) - 1) * Number(limit);
+    // Date range filter
+    let dateFilterQuery = {};
+    if (req.query.startDate && req.query.endDate && req.query.startDate !== "All" && req.query.endDate !== "All") {
+      const sDate = new Date(req.query.startDate);
+      const eDate = new Date(req.query.endDate);
+      eDate.setHours(23, 59, 59, 999);
+      dateFilterQuery = {
+        createdAt: {
+          $gte: sDate,
+          $lte: eDate,
+        },
+      };
+    }
 
     // Base filter
     const filter = {
       videoType: 1,
+      ...dateFilterQuery,
     };
 
-    // If userId exists, add user filter
-    if (userId) {
+    // If userId exists and is a valid ObjectId, filter by user; otherwise show all videos
+    if (
+      userId &&
+      userId !== "undefined" &&
+      userId !== "null" &&
+      userId !== "All" &&
+      mongoose.Types.ObjectId.isValid(userId)
+    ) {
       filter.userId = new mongoose.Types.ObjectId(userId);
     }
 
@@ -712,17 +734,30 @@ exports.getUserVideos = async (req, res) => {
             videoImage: 1,
             videoTime: 1,
             createdAt: 1,
+            uniqueVideoId: 1,
+            views: 1,
+            like: 1,
+            dislike: 1,
+            shareCount: 1,
+            videoPrivacyType: 1,
+            visibilityType: 1,
+            channelId: 1,
+            isComment: 1,
+            commentType: 1,
+            audienceType: 1,
+            allowRemix: 1,
 
             userId: "$user._id",
-            fullName: "$user.fullName",
-            nickName: "$user.nickName",
-            image: "$user.image",
+            fullName: { $ifNull: ["$user.fullName", "Unknown User"] },
+            nickName: { $ifNull: ["$user.nickName", ""] },
+            image: { $ifNull: ["$user.image", ""] },
+            uniqueId: { $ifNull: ["$user.uniqueId", ""] },
           },
         },
 
         { $sort: { createdAt: -1 } },
         { $skip: skip },
-        { $limit: Number(limit) },
+        { $limit: limitNum },
       ]),
     ]);
 
@@ -730,6 +765,7 @@ exports.getUserVideos = async (req, res) => {
       status: true,
       message: "Videos fetched successfully",
       totalVideos,
+      totalVideosOrShorts: totalVideos,
       videos,
     });
 
@@ -743,17 +779,39 @@ exports.getUserVideos = async (req, res) => {
 
 exports.getUserShorts = async (req, res) => {
   try {
-    const { userId, page = 1, limit = 20 } = req.query;
+    const { userId } = req.query;
+    const pageNum = req.query.page ? Number(req.query.page) : (req.query.start ? Number(req.query.start) : 1);
+    const limitNum = req.query.limit ? Number(req.query.limit) : 20;
+    const skip = (pageNum - 1) * limitNum;
 
-    const skip = (Number(page) - 1) * Number(limit);
+    // Date range filter
+    let dateFilterQuery = {};
+    if (req.query.startDate && req.query.endDate && req.query.startDate !== "All" && req.query.endDate !== "All") {
+      const sDate = new Date(req.query.startDate);
+      const eDate = new Date(req.query.endDate);
+      eDate.setHours(23, 59, 59, 999);
+      dateFilterQuery = {
+        createdAt: {
+          $gte: sDate,
+          $lte: eDate,
+        },
+      };
+    }
 
     // Base filter for shorts
     const filter = {
       videoType: 2,
+      ...dateFilterQuery,
     };
 
-    // If userId exists, fetch only that user's shorts
-    if (userId) {
+    // If userId exists and is a valid ObjectId, filter by user; otherwise show all shorts
+    if (
+      userId &&
+      userId !== "undefined" &&
+      userId !== "null" &&
+      userId !== "All" &&
+      mongoose.Types.ObjectId.isValid(userId)
+    ) {
       filter.userId = new mongoose.Types.ObjectId(userId);
     }
 
@@ -789,17 +847,30 @@ exports.getUserShorts = async (req, res) => {
             videoImage: 1,
             videoTime: 1,
             createdAt: 1,
+            uniqueVideoId: 1,
+            views: 1,
+            like: 1,
+            dislike: 1,
+            shareCount: 1,
+            videoPrivacyType: 1,
+            visibilityType: 1,
+            channelId: 1,
+            isComment: 1,
+            commentType: 1,
+            audienceType: 1,
+            allowRemix: 1,
 
             userId: "$user._id",
-            fullName: "$user.fullName",
-            nickName: "$user.nickName",
-            image: "$user.image",
+            fullName: { $ifNull: ["$user.fullName", "Unknown User"] },
+            nickName: { $ifNull: ["$user.nickName", ""] },
+            image: { $ifNull: ["$user.image", ""] },
+            uniqueId: { $ifNull: ["$user.uniqueId", ""] },
           },
         },
 
         { $sort: { createdAt: -1 } },
         { $skip: skip },
-        { $limit: Number(limit) },
+        { $limit: limitNum },
       ]),
     ]);
 
@@ -807,6 +878,7 @@ exports.getUserShorts = async (req, res) => {
       status: true,
       message: "Shorts fetched successfully",
       totalShorts,
+      totalVideosOrShorts: totalShorts,
       shorts,
     });
   } catch (error) {
