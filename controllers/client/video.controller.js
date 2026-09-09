@@ -38,6 +38,7 @@ const { generateUniqueVideoId } = require("../../util/generateUniqueVideoId");
 
 //generateHistoryUniqueId
 const { generateHistoryUniqueId } = require("../../util/generateHistoryUniqueId");
+const { awardEngagementReward } = require("../../util/engagementRewardHelper");
 
 //video Unlocked
 exports.unlockPrivateVideo = async (req, res) => {
@@ -2811,6 +2812,7 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
           likeOrDislike: "like",
         });
 
+        let rewardInfo = { rewardEarned: 0, todayEngagementCoins: 0, dailyLimitReached: false };
         if (!likeHistory) {
           likeHistory = new LikeHistoryOfVideo({
             userId: user._id,
@@ -2828,62 +2830,26 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
 
           likedOrDislikedVideo.like += 1;
           await likedOrDislikedVideo.save();
+
+          const likeVideoRewardCoins = typeof settingJSON !== "undefined" && settingJSON?.likeVideoRewardCoins ? settingJSON.likeVideoRewardCoins : 2;
+          rewardInfo = await awardEngagementReward({
+            user,
+            type: 7,
+            baseRewardCoins: likeVideoRewardCoins,
+            fcmTitle: (c) => "👍 You've Earned Coins for Liking a Video! Keep Liking! 💰",
+            fcmBody: (c) => `You've earned ${c} coins for liking a video! The more you like, the more you earn! 🚀🎬`,
+            fcmType: "ENGAGEMENT_LIKING_REWARD",
+          });
         }
 
         res.status(200).json({
           status: true,
           message: "like count increased and dislike count decreased (if any).",
           isLike: true,
+          rewardEarned: rewardInfo.rewardEarned,
+          todayEngagementCoins: rewardInfo.todayEngagementCoins,
+          dailyLimitReached: rewardInfo.dailyLimitReached,
         });
-
-        //when user like videos and earn coins
-        const uniqueId = await generateHistoryUniqueId();
-        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins;
-
-        const [updatedReceiver, historyEntry] = await Promise.all([
-          User.findOneAndUpdate(
-            { _id: user._id },
-            {
-              $inc: {
-                coin: likeVideoRewardCoins,
-                earnedCoin: likeVideoRewardCoins,
-              },
-            },
-            { new: true }
-          ),
-          History({
-            userId: user._id,
-            uniqueId: uniqueId,
-            coin: likeVideoRewardCoins,
-            type: 7,
-            date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-          }).save(),
-        ]);
-
-        if (user.fcmToken && user.fcmToken !== null) {
-          const adminPromise = await admin;
-
-          const payload = {
-            token: user.fcmToken,
-            notification: {
-              title: "👍 You've Earned Coins for Liking a Video! Keep Liking! 💰",
-              body: `You've earned ${likeVideoRewardCoins} coins for liking a video! The more you like, the more you earn! 🚀🎬`,
-            },
-            data: {
-              type: "ENGAGEMENT_LIKING_REWARD",
-            },
-          };
-
-          adminPromise
-            .messaging()
-            .send(payload)
-            .then((response) => {
-              console.log("Successfully sent with response: ", response);
-            })
-            .catch((error) => {
-              console.log("Error sending message: ", error);
-            });
-        }
 
         const videoUser = await User.findById(video.userId);
         if (videoUser.fcmToken && videoUser.fcmToken !== null) {
@@ -2991,56 +2957,24 @@ exports.likeOrDislikeOfVideo = async (req, res) => {
         likeHistory.likeOrDislike = "like";
         await likeHistory.save();
 
-        res.status(200).json({ status: true, message: "likeOrDislike wise like or dislike updated.", isLike: true });
+        const likeVideoRewardCoins = typeof settingJSON !== "undefined" && settingJSON?.likeVideoRewardCoins ? settingJSON.likeVideoRewardCoins : 2;
+        const rewardInfo = await awardEngagementReward({
+          user,
+          type: 7,
+          baseRewardCoins: likeVideoRewardCoins,
+          fcmTitle: (c) => "👍 You've Earned Coins for Liking a Video! Keep Liking! 💰",
+          fcmBody: (c) => `You've earned ${c} coins for liking a video! The more you like, the more you earn! 🚀🎬`,
+          fcmType: "ENGAGEMENT_LIKING_REWARD",
+        });
 
-        const uniqueId = await generateHistoryUniqueId();
-
-        const likeVideoRewardCoins = settingJSON.likeVideoRewardCoins;
-
-        const [updatedReceiver, historyEntry] = await Promise.all([
-          User.findOneAndUpdate(
-            { _id: user._id },
-            {
-              $inc: {
-                coin: likeVideoRewardCoins,
-                earnedCoin: likeVideoRewardCoins,
-              },
-            },
-            { new: true }
-          ),
-          History({
-            userId: user._id,
-            uniqueId: uniqueId,
-            coin: likeVideoRewardCoins,
-            type: 7,
-            date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-          }).save(),
-        ]);
-
-        if (user.fcmToken && user.fcmToken !== null) {
-          const adminPromise = await admin;
-
-          const payload = {
-            token: user.fcmToken,
-            notification: {
-              title: "👍 You've Earned Coins for Liking a Video! Keep Liking! 💰",
-              body: `You've earned ${likeVideoRewardCoins} coins for liking a video! The more you like, the more you earn! 🚀🎬`,
-            },
-            data: {
-              type: "ENGAGEMENT_LIKING_REWARD",
-            },
-          };
-
-          adminPromise
-            .messaging()
-            .send(payload)
-            .then((response) => {
-              console.log("Successfully sent with response: ", response);
-            })
-            .catch((error) => {
-              console.log("Error sending message: ", error);
-            });
-        }
+        res.status(200).json({
+          status: true,
+          message: "likeOrDislike wise like or dislike updated.",
+          isLike: true,
+          rewardEarned: rewardInfo.rewardEarned,
+          todayEngagementCoins: rewardInfo.todayEngagementCoins,
+          dailyLimitReached: rewardInfo.dailyLimitReached,
+        });
 
         const videoUser = await User.findById(video.userId);
         if (videoUser.fcmToken && videoUser.fcmToken !== null) {

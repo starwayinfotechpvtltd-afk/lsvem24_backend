@@ -63,8 +63,10 @@ const userSchema = new mongoose.Schema(
     influencerName: { type: String, trim: true, default: "" },
     influencerType: { type: String, trim: true, default: "" }, // Creator, Celebrity, Businessman
     influencerSocialLink: { type: String, trim: true, default: "" },
+    influencerSocialLinks: { type: [String], default: [] }, // Max 4 social media links
     influencerImages: { type: [String], default: [] }, // Min 2, Max 5 images ("Upload your image")
     influencerProductLink: { type: String, trim: true, default: "" }, // Product link
+    influencerProductLinks: { type: [String], default: [] }, // Max 2 product links
     influencerProductImages: { type: [String], default: [] }, // Max 5 product images
     isSharePhoneNumber: { type: Boolean, default: true },
 

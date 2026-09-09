@@ -13,6 +13,7 @@ const admin = require("../../util/privateKey");
 
 //generateHistoryUniqueId
 const { generateHistoryUniqueId } = require("../../util/generateHistoryUniqueId");
+const { awardEngagementReward } = require("../../util/engagementRewardHelper");
 
 //day.js
 const dayjs = require("dayjs");
@@ -50,57 +51,24 @@ exports.createComment = async (req, res) => {
     videoComment.commentText = req.body.commentText;
     await videoComment.save();
 
-    res.status(200).json({ status: true, message: "Comment passed on video by that user.", videoComment });
+    const commentingRewardCoins = typeof settingJSON !== "undefined" && settingJSON?.commentingRewardCoins ? settingJSON.commentingRewardCoins : 5;
+    const rewardInfo = await awardEngagementReward({
+      user,
+      type: 6,
+      baseRewardCoins: commentingRewardCoins,
+      fcmTitle: (c) => "🚀 You've Earned Coins for Your Comment! Keep Engaging! 🌟",
+      fcmBody: (c) => `You've earned ${c} coins for commenting on a video! Keep engaging for more rewards! 🎬💬`,
+      fcmType: "ENGAGEMENT_COMMENTING_REWARD",
+    });
 
-    const videoCommentAlreadyExist = await VideoComment.find({ userId: user._id, videoId: video._id });
-    const commentingRewardCoins = settingJSON.commentingRewardCoins;
-
-    if (videoCommentAlreadyExist.length !== 0) {
-      const [updatedReceiver, historyEntry] = await Promise.all([
-        User.findOneAndUpdate(
-          { _id: user._id },
-          {
-            $inc: {
-              coin: commentingRewardCoins,
-              earnedCoin: commentingRewardCoins,
-            },
-          },
-          { new: true }
-        ),
-        History({
-          userId: user._id,
-          uniqueId: uniqueId,
-          coin: commentingRewardCoins,
-          type: 6,
-          date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-        }).save(),
-      ]);
-
-      if (user.fcmToken && user.fcmToken !== null) {
-        const adminPromise = await admin;
-
-        const payload = {
-          token: user.fcmToken,
-          notification: {
-            title: "🚀 You've Earned Coins for Your Comment! Keep Engaging! 🌟",
-            body: `You've earned ${commentingRewardCoins} coins for commenting on a video! Keep engaging for more rewards! 🎬💬`,
-          },
-          data: {
-            type: "ENGAGEMENT_COMMENTING_REWARD",
-          },
-        };
-
-        adminPromise
-          .messaging()
-          .send(payload)
-          .then((response) => {
-            console.log("Successfully sent with response: ", response);
-          })
-          .catch((error) => {
-            console.log("Error sending message: ", error);
-          });
-      }
-    }
+    return res.status(200).json({
+      status: true,
+      message: "Comment passed on video by that user.",
+      videoComment,
+      rewardEarned: rewardInfo.rewardEarned,
+      todayEngagementCoins: rewardInfo.todayEngagementCoins,
+      dailyLimitReached: rewardInfo.dailyLimitReached,
+    });
   } catch (error) {
     console.log(error);
     return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });

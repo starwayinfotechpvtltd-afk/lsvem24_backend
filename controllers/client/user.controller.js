@@ -2223,23 +2223,55 @@ exports.becomeInfluencer = async (req, res) => {
       });
     }
 
+    // Process multiple social media links (max 4)
+    let socialMediaLinks = [];
+    if (Array.isArray(req.body.socialMediaLinks)) {
+      socialMediaLinks = req.body.socialMediaLinks
+        .map((s) => (s || "").toString().trim())
+        .filter(Boolean);
+    } else if (req.body.socialMediaLink) {
+      socialMediaLinks = req.body.socialMediaLink
+        .toString()
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    socialMediaLinks = socialMediaLinks.slice(0, 4);
+
+    // Process multiple product links (max 2)
+    let productLinks = [];
+    if (Array.isArray(req.body.productLinks)) {
+      productLinks = req.body.productLinks
+        .map((p) => (p || "").toString().trim())
+        .filter(Boolean);
+    } else if (req.body.productLink) {
+      productLinks = req.body.productLink
+        .toString()
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+    }
+    productLinks = productLinks.slice(0, 2);
+
     // Deduct strictly from purchasedCoin and update influencer status
     user.purchasedCoin = Math.max(0, user.purchasedCoin - requiredCoins);
     user.coin = Math.max(0, (user.purchasedCoin || 0) + (user.earnedCoin || 0));
     user.isInfluencer = true;
     user.influencerName = influencerName.trim();
     user.influencerType = normalizedType;
-    user.influencerSocialLink = (socialMediaLink || "").trim();
+    user.influencerSocialLink = socialMediaLinks.join(", ");
+    user.influencerSocialLinks = socialMediaLinks;
     user.influencerImages = influencerImages;
-    user.influencerProductLink = (productLink || "").trim();
+    user.influencerProductLink = productLinks.join(", ");
+    user.influencerProductLinks = productLinks;
     user.influencerProductImages = productImages;
     if (req.body.isSharePhoneNumber !== undefined) {
       user.isSharePhoneNumber = Boolean(req.body.isSharePhoneNumber);
     }
 
-    if (user.socialMediaLinks && socialMediaLink && socialMediaLink.trim().length > 0) {
+    if (user.socialMediaLinks && socialMediaLinks.length > 0) {
       if (!user.socialMediaLinks.instagramLink) {
-        user.socialMediaLinks.instagramLink = socialMediaLink.trim();
+        user.socialMediaLinks.instagramLink = socialMediaLinks[0];
       }
     }
 
@@ -2319,7 +2351,7 @@ exports.getInfluencers = async (req, res) => {
 
     let users = await User.find(query)
       .select(
-        "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerImages influencerProductLink influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
+        "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerSocialLinks influencerImages influencerProductLink influencerProductLinks influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
       )
       .sort(sort)
       .limit(100);
@@ -2329,7 +2361,7 @@ exports.getInfluencers = async (req, res) => {
       delete query.$or;
       users = await User.find(query)
         .select(
-          "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerImages influencerProductLink influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
+          "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerSocialLinks influencerImages influencerProductLink influencerProductLinks influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
         )
         .sort(sort)
         .limit(50);
@@ -2411,8 +2443,16 @@ exports.checkFollowStatus = async (req, res) => {
       email: isFollowed ? influencer.email : undefined,
       mobileNumber: (isFollowed && canSharePhone) ? influencer.mobileNumber : undefined,
       influencerSocialLink: isFollowed ? influencer.influencerSocialLink : undefined,
+      influencerSocialLinks: isFollowed
+        ? (influencer.influencerSocialLinks && influencer.influencerSocialLinks.length > 0
+            ? influencer.influencerSocialLinks
+            : (influencer.influencerSocialLink ? influencer.influencerSocialLink.split(",").map(s => s.trim()).filter(Boolean) : []))
+        : [],
       influencerImages: influencer.influencerImages || [],
       influencerProductLink: influencer.influencerProductLink || "",
+      influencerProductLinks: (influencer.influencerProductLinks && influencer.influencerProductLinks.length > 0)
+        ? influencer.influencerProductLinks
+        : (influencer.influencerProductLink ? influencer.influencerProductLink.split(",").map(s => s.trim()).filter(Boolean) : []),
       influencerProductImages: influencer.influencerProductImages || [],
     });
   } catch (error) {
@@ -2466,8 +2506,14 @@ exports.followInfluencer = async (req, res) => {
         email: influencer.email,
         mobileNumber: canSharePhone ? influencer.mobileNumber : undefined,
         influencerSocialLink: influencer.influencerSocialLink,
+        influencerSocialLinks: (influencer.influencerSocialLinks && influencer.influencerSocialLinks.length > 0)
+          ? influencer.influencerSocialLinks
+          : (influencer.influencerSocialLink ? influencer.influencerSocialLink.split(",").map(s => s.trim()).filter(Boolean) : []),
         influencerImages: influencer.influencerImages || [],
         influencerProductLink: influencer.influencerProductLink || "",
+        influencerProductLinks: (influencer.influencerProductLinks && influencer.influencerProductLinks.length > 0)
+          ? influencer.influencerProductLinks
+          : (influencer.influencerProductLink ? influencer.influencerProductLink.split(",").map(s => s.trim()).filter(Boolean) : []),
         influencerProductImages: influencer.influencerProductImages || [],
       });
     }
@@ -2553,8 +2599,14 @@ exports.followInfluencer = async (req, res) => {
       email: influencer.email,
       mobileNumber: canSharePhone ? influencer.mobileNumber : undefined,
       influencerSocialLink: influencer.influencerSocialLink,
+      influencerSocialLinks: (influencer.influencerSocialLinks && influencer.influencerSocialLinks.length > 0)
+        ? influencer.influencerSocialLinks
+        : (influencer.influencerSocialLink ? influencer.influencerSocialLink.split(",").map(s => s.trim()).filter(Boolean) : []),
       influencerImages: influencer.influencerImages || [],
       influencerProductLink: influencer.influencerProductLink || "",
+      influencerProductLinks: (influencer.influencerProductLinks && influencer.influencerProductLinks.length > 0)
+        ? influencer.influencerProductLinks
+        : (influencer.influencerProductLink ? influencer.influencerProductLink.split(",").map(s => s.trim()).filter(Boolean) : []),
       influencerProductImages: influencer.influencerProductImages || [],
       deductedCoins: followCost,
       remainingCoins: user.coin,
