@@ -2307,7 +2307,7 @@ exports.getInfluencers = async (req, res) => {
     const tab = req.query.tab || "All"; // All, Influencer, Celebrity, Businessman, Trending, Popular
     const search = req.query.search ? req.query.search.trim() : "";
 
-    let query = { isActive: true, isBlock: false };
+    let query = { isActive: true, isBlock: false, isInfluencer: true };
 
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       query._id = { $ne: new mongoose.Types.ObjectId(userId) };
@@ -2326,24 +2326,47 @@ exports.getInfluencers = async (req, res) => {
     const normalizedTab = tab.trim().toLowerCase();
 
     if (normalizedTab === "influencer") {
-      query.$or = [
-        { isInfluencer: true, influencerType: { $in: [/^creator$/i, /^influencer$/i, ""] } },
-        { isInfluencer: true },
-      ];
+      const typeFilter = {
+        $or: [
+          { influencerType: { $in: [/^creator$/i, /^influencer$/i, ""] } },
+          { influencerType: { $exists: false } },
+        ],
+      };
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, typeFilter];
+        delete query.$or;
+      } else {
+        query.$or = typeFilter.$or;
+      }
     } else if (normalizedTab === "celebrity") {
-      query.$or = [
-        { isInfluencer: true, influencerType: /^celebrity$/i },
-        { "plan.productKey": /^celebrity/i },
-        { "plan.amount": 1499 },
-      ];
+      const celebFilter = {
+        $or: [
+          { influencerType: /^celebrity$/i },
+          { "plan.productKey": /^celebrity/i },
+          { "plan.amount": 1499 },
+        ],
+      };
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, celebFilter];
+        delete query.$or;
+      } else {
+        query.$or = celebFilter.$or;
+      }
     } else if (normalizedTab === "businessman") {
-      query.$or = [
-        { isInfluencer: true, influencerType: /^businessman$/i },
-        { "plan.productKey": /^business/i },
-        { "plan.amount": 1999 },
-      ];
+      const bizFilter = {
+        $or: [
+          { influencerType: /^businessman$/i },
+          { "plan.productKey": /^business/i },
+          { "plan.amount": 1999 },
+        ],
+      };
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, bizFilter];
+        delete query.$or;
+      } else {
+        query.$or = bizFilter.$or;
+      }
     } else if (normalizedTab === "trending") {
-      query.isInfluencer = true;
       sort = { referralCount: -1, coin: -1, totalWatchTime: -1 };
     } else if (normalizedTab === "popular") {
       sort = { coin: -1, totalWatchTime: -1, createdAt: -1 };
@@ -2355,17 +2378,6 @@ exports.getInfluencers = async (req, res) => {
       )
       .sort(sort)
       .limit(100);
-
-    if (users.length === 0 && (normalizedTab === "all" || normalizedTab === "trending" || normalizedTab === "popular")) {
-      delete query.isInfluencer;
-      delete query.$or;
-      users = await User.find(query)
-        .select(
-          "_id fullName nickName image email mobileNumber country isInfluencer isSharePhoneNumber influencerName influencerType influencerSocialLink influencerSocialLinks influencerImages influencerProductLink influencerProductLinks influencerProductImages isVerified channelId descriptionOfChannel coin totalWatchTime referralCount createdAt"
-        )
-        .sort(sort)
-        .limit(50);
-    }
 
     const influencersWithFollowers = await Promise.all(
       users.map(async (u) => {
@@ -2449,10 +2461,12 @@ exports.checkFollowStatus = async (req, res) => {
             : (influencer.influencerSocialLink ? influencer.influencerSocialLink.split(",").map(s => s.trim()).filter(Boolean) : []))
         : [],
       influencerImages: influencer.influencerImages || [],
-      influencerProductLink: influencer.influencerProductLink || "",
-      influencerProductLinks: (influencer.influencerProductLinks && influencer.influencerProductLinks.length > 0)
-        ? influencer.influencerProductLinks
-        : (influencer.influencerProductLink ? influencer.influencerProductLink.split(",").map(s => s.trim()).filter(Boolean) : []),
+      influencerProductLink: isFollowed ? (influencer.influencerProductLink || "") : "",
+      influencerProductLinks: isFollowed
+        ? ((influencer.influencerProductLinks && influencer.influencerProductLinks.length > 0)
+            ? influencer.influencerProductLinks
+            : (influencer.influencerProductLink ? influencer.influencerProductLink.split(",").map(s => s.trim()).filter(Boolean) : []))
+        : [],
       influencerProductImages: influencer.influencerProductImages || [],
     });
   } catch (error) {
