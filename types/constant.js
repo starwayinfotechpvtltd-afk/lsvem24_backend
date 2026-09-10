@@ -9,6 +9,7 @@ exports.LOGIN_TYPE = {
 exports.VIDEO_TYPE = {
   NORMAL_VIDEO: 1,
   SHORT_VIDEO: 2,
+  POST: 3,
 };
 
 exports.VISIBILITY_TYPE = {

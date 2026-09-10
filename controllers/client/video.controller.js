@@ -202,6 +202,15 @@ exports.createVideo = async (req, res) => {
       });
     }
 
+    if (parseInt(req.body.videoType) === 3) {
+      if (!req.body.videoUrl && req.body.videoImage) {
+        req.body.videoUrl = req.body.videoImage;
+      }
+      if (!req.body.videoImage && req.body.videoUrl) {
+        req.body.videoImage = req.body.videoUrl;
+      }
+    }
+
     if (!req.body.title || !req.body.videoUrl || !req.body.videoImage) {
       if (req.body.videoImage) await deleteFromStorage(req.body.videoImage);
       if (req.body.videoUrl) await deleteFromStorage(req.body.videoUrl);
@@ -211,7 +220,7 @@ exports.createVideo = async (req, res) => {
       });
     }
 
-    const videoTimeInSeconds = convertTimeToSeconds(req.body.videoTime);
+    const videoTimeInSeconds = parseInt(req.body.videoType) === 3 ? 0 : convertTimeToSeconds(req.body.videoTime);
 
     // Validate schedule type
     if (req.body.scheduleType == 1 && !req.body.scheduleTime) {
@@ -1408,6 +1417,45 @@ exports.channeldetailsOfShorts = async (req, res) => {
   }
 };
 
+// Helper to show posts (videoType === 3) in between videos (videoType === 1), never at the start
+const arrangeVideosAndPosts = (items) => {
+  if (!items || !items.length) return items;
+  const videos = [];
+  const posts = [];
+  for (const item of items) {
+    if (item.videoType === 3) {
+      posts.push(item);
+    } else {
+      videos.push(item);
+    }
+  }
+  if (!posts.length || !videos.length) return items;
+
+  const result = [];
+  let videoIndex = 0;
+  let postIndex = 0;
+
+  // Ensure at least 2 videos (or 1 if only 1 exists) at start, not a post at the top
+  const initialCount = videos.length >= 2 ? 2 : 1;
+  while (videoIndex < initialCount && videoIndex < videos.length) {
+    result.push(videos[videoIndex++]);
+  }
+
+  // Interleave posts between remaining videos (1 post every 3 videos)
+  while (videoIndex < videos.length || postIndex < posts.length) {
+    if (postIndex < posts.length) {
+      result.push(posts[postIndex++]);
+    }
+    let count = 0;
+    while (videoIndex < videos.length && count < 3) {
+      result.push(videos[videoIndex++]);
+      count++;
+    }
+  }
+
+  return result;
+};
+
 //get type wise videos for user (home)
 exports.videosOfHome = async (req, res) => {
   try {
@@ -1432,7 +1480,7 @@ exports.videosOfHome = async (req, res) => {
               isActive: true,
               scheduleType: 2,
               visibilityType: 1,
-              videoType: 1,
+              videoType: { $in: [1, 3] },
             },
           },
           { $sort: { createdAt: -1 } },
@@ -1744,7 +1792,7 @@ exports.videosOfHome = async (req, res) => {
         status: true,
         message: "Retrive videos for the user!",
         data: {
-          videos: videos,
+          videos: arrangeVideosAndPosts(videos),
           shorts: shorts,
         },
       });
@@ -1757,7 +1805,7 @@ exports.videosOfHome = async (req, res) => {
               isActive: true,
               scheduleType: 2,
               visibilityType: 1,
-              videoType: 1,
+              videoType: { $in: [1, 3] },
             },
           },
           {
@@ -2069,7 +2117,7 @@ exports.videosOfHome = async (req, res) => {
         status: true,
         message: "Retrive videos for the user!",
         data: {
-          videos: videos,
+          videos: arrangeVideosAndPosts(videos),
           shorts: shorts,
         },
       });
@@ -2082,7 +2130,7 @@ exports.videosOfHome = async (req, res) => {
               isActive: true,
               scheduleType: 2,
               visibilityType: 1,
-              videoType: 1,
+              videoType: { $in: [1, 3] },
             },
           },
           {
@@ -2395,7 +2443,7 @@ exports.videosOfHome = async (req, res) => {
         status: true,
         message: "Retrive videos for the user!",
         data: {
-          videos: videos,
+          videos: arrangeVideosAndPosts(videos),
           shorts: shorts,
         },
       });
