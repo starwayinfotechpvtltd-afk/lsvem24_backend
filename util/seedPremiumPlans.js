@@ -10,7 +10,6 @@ const defaultPlans = [
       'Ad-free video streaming',
       'High quality HD download',
       'Background playback support',
-      'Ad-free experience'
     ],
     isActive: true
   },
@@ -20,10 +19,10 @@ const defaultPlans = [
     validityType: 'days',
     productKey: 'creator_plan_30d',
     planBenefit: [
-      'Promote 5 videos per month',
-      'Priority video listing',
-      'Basic analytics dashboard',
-      'Ad-free & HD downloads'
+      'Ad-free video streaming',
+      'High quality HD download',
+      'Background playback support',
+      'Single blue tick'
     ],
     isActive: true
   },
@@ -33,11 +32,10 @@ const defaultPlans = [
     validityType: 'days',
     productKey: 'celebrity_plan_30d',
     planBenefit: [
-      'Promote 15 videos per month',
-      'Top trending placement',
-      'Priority customer support',
-      'Access to brand collaborations',
-      'Ad-free & HD downloads'
+      'Ad-free video streaming',
+      'High quality HD download',
+      'Background playback support',
+      'Yellow double tick'
     ],
     isActive: true
   },
@@ -47,12 +45,11 @@ const defaultPlans = [
     validityType: 'days',
     productKey: 'business_plan_30d',
     planBenefit: [
-      'Unlimited video promotion',
-      'Top trending placement',
-      'Dedicated account manager',
+      'Ad-free video streaming',
+      'High quality HD download',
+      'Background playback support',
       'Advanced audience insights',
-      'Commercial advertising tools',
-      'Ad-free & Unlimited HD downloads'
+      'Green badge',
     ],
     isActive: true
   }
