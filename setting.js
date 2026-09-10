@@ -20,6 +20,8 @@ module.exports = {
   "razorPaySwitch": true,
   "privacyPolicyLink": "https://mefigureceleb.com/privacy-policy/",
   "privacyPolicyText": "Lsvem24 Privacy Policy Original",
+  "termsOfUseLink": "https://mefigureceleb.com/terms-and-conditions/",
+  "termsOfUseText": "Lsvem24 Terms and Conditions Original",
   "adminCommissionOfPaidChannel": 0,
   "adminCommissionOfPaidVideo": 0,
   "durationOfShorts": 60000,

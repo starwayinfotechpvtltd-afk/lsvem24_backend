@@ -39,6 +39,9 @@ exports.update = async (req, res) => {
     setting.privacyPolicyLink = req.body.privacyPolicyLink ? req.body.privacyPolicyLink : setting.privacyPolicyLink;
     setting.privacyPolicyText = req.body.privacyPolicyText ? req.body.privacyPolicyText : setting.privacyPolicyText;
 
+    setting.termsOfUseLink = req.body.termsOfUseLink || req.body.termsAndConditionLink || setting.termsOfUseLink;
+    setting.termsOfUseText = req.body.termsOfUseText || req.body.termsAndConditionText || setting.termsOfUseText;
+
     setting.zegoAppId = req.body.zegoAppId ? req.body.zegoAppId : setting.zegoAppId;
     setting.zegoAppSignIn = req.body.zegoAppSignIn ? req.body.zegoAppSignIn : setting.zegoAppSignIn;
     setting.resendApiKey = req.body.resendApiKey ? req.body.resendApiKey : setting.resendApiKey;

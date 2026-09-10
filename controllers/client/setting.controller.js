@@ -34,6 +34,7 @@ exports.get = async (req, res) => {
       process.env.RAZORPAY_KEY_SECRET &&
       isRzpSwitchEnabled
     );
+    settingPayload.termsOfUseLink = settingPayload.termsOfUseLink || "https://mefigureceleb.com/terms-and-conditions/";
     delete settingPayload.razorSecretKey;
 
     return res.status(200).json({

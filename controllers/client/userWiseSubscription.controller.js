@@ -24,10 +24,13 @@ exports.subscribedUnSubscibed = async (req, res) => {
       return res.status(200).json({ status: false, message: "Oops! Invalid details." });
     }
 
-    const [user, channel, alreadySubscribedChannelByUser] = await Promise.all([
+    const channelFindQuery = mongoose.isValidObjectId(channelId)
+      ? { $or: [{ _id: new mongoose.Types.ObjectId(channelId) }, { channelId: channelId }] }
+      : { channelId: channelId };
+
+    const [user, channel] = await Promise.all([
       User.findOne({ _id: userId, isActive: true }),
-      User.findOne({ channelId: channelId }),
-      UserWiseSubscription.findOne({ userId: userId, channelId: channelId }),
+      User.findOne(channelFindQuery),
     ]);
 
     if (!user) {
@@ -43,15 +46,21 @@ exports.subscribedUnSubscibed = async (req, res) => {
     }
 
     // Check if user is trying to subscribe to their own channel
-    if (user.channelId === channel.channelId) {
+    const channelIdentifiers = [channel.channelId, channel._id ? channel._id.toString() : null].filter(Boolean);
+    if (channelIdentifiers.includes(user.channelId) || channelIdentifiers.includes(user._id.toString())) {
       return res.status(200).json({
         status: false,
         message: "You cannot subscribe to your own channel.",
       });
     }
 
+    const alreadySubscribedChannelByUser = await UserWiseSubscription.findOne({
+      userId: user._id,
+      channelId: { $in: channelIdentifiers },
+    });
+
     if (alreadySubscribedChannelByUser) {
-      await UserWiseSubscription.deleteOne({ userId: user._id, channelId: channel.channelId });
+      await UserWiseSubscription.deleteMany({ userId: user._id, channelId: { $in: channelIdentifiers } });
 
       return res.status(200).json({
         status: true,
@@ -78,7 +87,7 @@ exports.subscribedUnSubscibed = async (req, res) => {
 
         const subscribedByUser = new UserWiseSubscription({
           userId: user._id,
-          channelId: channel.channelId,
+          channelId: channel.channelId || channel._id.toString(),
           isPublic: false,
         });
 
@@ -151,7 +160,7 @@ exports.subscribedUnSubscibed = async (req, res) => {
 
         const subscribedByUser = new UserWiseSubscription({
           userId: user._id,
-          channelId: channel.channelId,
+          channelId: channel.channelId || channel._id.toString(),
           isPublic: true,
         });
 
@@ -197,13 +206,21 @@ exports.subscribedUnSubscibed = async (req, res) => {
 //get all subscription channels subscribed by that user
 exports.getSubscribedChannel = async (req, res) => {
   try {
-    if (!req.query.userId) {
-      return res.status(200).json({ status: false, message: "Oops ! Invalid details!!" });
+    if (!req.query.userId || req.query.userId === "null" || req.query.userId === "undefined" || !mongoose.isValidObjectId(req.query.userId)) {
+      return res.status(200).json({
+        status: true,
+        message: "No channels have been subscribed by that user.",
+        totalSubscribedChannel: 0,
+        subscribedChannel: [],
+      });
     }
 
     const userId = new mongoose.Types.ObjectId(req.query.userId);
 
-    const [user, subscribedChannel] = await Promise.all([User.findOne({ _id: userId, isActive: true }), UserWiseSubscription.find({ userId: userId })]);
+    const [user, subscribedChannel] = await Promise.all([
+      User.findOne({ _id: userId, isActive: true }),
+      UserWiseSubscription.find({ userId: userId }),
+    ]);
 
     if (!user) {
       return res.status(200).json({ status: false, message: "user does not found!" });
@@ -214,27 +231,54 @@ exports.getSubscribedChannel = async (req, res) => {
     }
 
     if (!subscribedChannel || subscribedChannel.length === 0) {
-      return res.status(200).json({ status: false, message: "No channels have been subscribed by that user." });
+      return res.status(200).json({
+        status: true,
+        message: "No channels have been subscribed by that user.",
+        totalSubscribedChannel: 0,
+        subscribedChannel: [],
+      });
     }
 
-    const channelsInfoPromises = subscribedChannel?.map(async (subscription) => {
-      const channel = await User.findOne({ channelId: subscription.channelId });
+    const channelsInfoPromises = subscribedChannel.map(async (subscription) => {
+      if (!subscription || !subscription.channelId) return null;
+      let channel = null;
+      if (mongoose.isValidObjectId(subscription.channelId)) {
+        channel = await User.findOne({
+          $or: [
+            { _id: new mongoose.Types.ObjectId(subscription.channelId) },
+            { channelId: subscription.channelId },
+          ],
+        });
+      } else {
+        channel = await User.findOne({ channelId: subscription.channelId });
+      }
+
       if (channel) {
         return {
-          channelId: subscription?.channelId,
-          channelName: channel?.fullName,
-          channelImage: channel?.image,
+          channelId: channel.channelId || channel._id.toString(),
+          channelName: channel?.fullName || channel?.nickName || "Unknown Channel",
+          channelImage: channel?.image || "",
         };
       }
+      return null;
     });
 
-    const [totalSubscribedChannel, channelsInfo] = await Promise.all([UserWiseSubscription.countDocuments({ userId: user._id }), Promise.all(channelsInfoPromises)]);
+    const resolvedChannels = (await Promise.all(channelsInfoPromises)).filter(Boolean);
+
+    const uniqueChannels = [];
+    const seen = new Set();
+    for (const item of resolvedChannels) {
+      if (item && item.channelId && !seen.has(item.channelId)) {
+        seen.add(item.channelId);
+        uniqueChannels.push(item);
+      }
+    }
 
     return res.status(200).json({
       status: true,
       message: "Retrive subscription channels subscribed by that user!",
-      totalSubscribedChannel: totalSubscribedChannel,
-      subscribedChannel: channelsInfo,
+      totalSubscribedChannel: uniqueChannels.length,
+      subscribedChannel: uniqueChannels,
     });
   } catch (error) {
     console.log(error);

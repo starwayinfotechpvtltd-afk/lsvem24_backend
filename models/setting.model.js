@@ -20,6 +20,9 @@ const settingSchema = new mongoose.Schema(
     privacyPolicyLink: { type: String, default: "PRIVACY POLICY LINK" },
     privacyPolicyText: { type: String, default: "PRIVACY POLICY TEXT" },
 
+    termsOfUseLink: { type: String, default: "https://mefigureceleb.com/terms-and-conditions/" },
+    termsOfUseText: { type: String, default: "TERMS AND CONDITIONS TEXT" },
+
     zegoAppId: { type: String, default: "ZEGO APP ID" },
     zegoAppSignIn: { type: String, default: "ZEGO APP SIGN IN" },
 
