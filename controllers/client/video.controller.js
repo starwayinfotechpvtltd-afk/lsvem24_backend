@@ -2447,6 +2447,178 @@ exports.videosOfHome = async (req, res) => {
           shorts: shorts,
         },
       });
+    } else if (type === "posts" || type === "feed") {
+      const posts = await Video.aggregate([
+        {
+          $match: {
+            isActive: true,
+            scheduleType: 2,
+            visibilityType: 1,
+            videoType: 3,
+          },
+        },
+        { $sort: { createdAt: -1 } },
+        { $skip: (start - 1) * limit },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: "users",
+            localField: "channelId",
+            foreignField: "channelId",
+            as: "channel",
+          },
+        },
+        {
+          $unwind: {
+            path: "$channel",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $lookup: {
+            from: "userwisesubscriptions",
+            let: {
+              channelId: "$channelId",
+            },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [{ $eq: ["$channelId", "$$channelId"] }],
+                  },
+                },
+              },
+            ],
+            as: "isSubscribed",
+          },
+        },
+        {
+          $lookup: {
+            from: "watchhistories",
+            let: { videoId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ["$videoId", "$$videoId"] },
+                },
+              },
+            ],
+            as: "views",
+          },
+        },
+        {
+          $lookup: {
+            from: "videocomments",
+            let: { videoId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ["$videoId", "$$videoId"] },
+                      { $eq: ["$recursiveCommentId", null] },
+                    ],
+                  },
+                },
+              },
+            ],
+            as: "totalComments",
+          },
+        },
+        {
+          $lookup: {
+            from: "likehistoryofvideos",
+            let: { videoId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [{ $eq: ["$videoId", "$$videoId"] }],
+                  },
+                },
+              },
+            ],
+            as: "likes",
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            title: 1,
+            description: 1,
+            videoType: 1,
+            videoTime: 1,
+            videoUrl: 1,
+            videoImage: 1,
+            scheduleType: 1,
+            scheduleTime: 1,
+            channelId: 1,
+            videoPrivacyType: 1,
+            views: { $size: "$views" },
+            likes: { $size: "$likes" },
+            comments: { $size: "$totalComments" },
+            channelType: "$channel.channelType",
+            channelName: "$channel.fullName",
+            channelImage: "$channel.image",
+            isSubscribed: { $cond: [{ $eq: [{ $size: "$isSubscribed" }, 0] }, false, true] },
+            time: {
+              $let: {
+                vars: {
+                  timeDiff: { $subtract: [now.toDate(), "$createdAt"] },
+                },
+                in: {
+                  $concat: [
+                    {
+                      $switch: {
+                        branches: [
+                          {
+                            case: { $gte: ["$$timeDiff", 31536000000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 31536000000] } } }, " years ago"] },
+                          },
+                          {
+                            case: { $gte: ["$$timeDiff", 2592000000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 2592000000] } } }, " months ago"] },
+                          },
+                          {
+                            case: { $gte: ["$$timeDiff", 604800000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 604800000] } } }, " weeks ago"] },
+                          },
+                          {
+                            case: { $gte: ["$$timeDiff", 86400000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 86400000] } } }, " days ago"] },
+                          },
+                          {
+                            case: { $gte: ["$$timeDiff", 3600000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 3600000] } } }, " hours ago"] },
+                          },
+                          {
+                            case: { $gte: ["$$timeDiff", 60000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 60000] } } }, " minutes ago"] },
+                          },
+                          {
+                            case: { $gte: ["$$timeDiff", 1000] },
+                            then: { $concat: [{ $toString: { $floor: { $divide: ["$$timeDiff", 1000] } } }, " seconds ago"] },
+                          },
+                          { case: true, then: "Just now" },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ]);
+
+      return res.status(200).json({
+        status: true,
+        message: "Retrive posts for the user!",
+        data: {
+          videos: posts,
+          shorts: [],
+        },
+      });
     } else if (type === "publiclive") {
       // const [user, publicLive] = await Promise.all([
       //   User.findOne({ _id: userId, isActive: true }),
