@@ -17,6 +17,7 @@ const PlayList = require("../../models/playList.model");
 
 //deleteFromStorage
 const { deleteFromStorage } = require("../../util/storageHelper");
+const videoTranscodeQueue = require("../../util/videoQueue");
 
 //private key
 const admin = require("../../util/privateKey");
@@ -333,6 +334,9 @@ exports.createVideo = async (req, res) => {
     video.videoType = parseInt(req.body.videoType) || 1;
     video.videoTime = videoTimeInSeconds;
     video.videoUrl = req.body.videoUrl;
+    video.originalUrl = req.body.videoUrl;
+    video.processingStatus = "pending";
+    video.processingProgress = 0;
     video.videoImage = req.body.videoImage;
     video.visibilityType = parseInt(req.body.visibilityType) || 1;
     video.audienceType = parseInt(req.body.audienceType) || 1;
@@ -373,6 +377,13 @@ exports.createVideo = async (req, res) => {
     video.soundListId = soundList?._id || null;
 
     await Promise.all([user.save(), video.save()]);
+
+    // Asynchronously trigger background HLS adaptive bitrate transcoding
+    videoTranscodeQueue.enqueue({
+      videoId: video._id.toString(),
+      videoUrl: video.videoUrl,
+      videoType: video.videoType,
+    });
 
     const videoData = await Video.findById(video._id).populate([
       { path: "soundListId", select: "soundTitle soundLink" },
@@ -627,6 +638,11 @@ exports.shortsOfUser = async (req, res) => {
           videoType: 1,
           videoTime: 1,
           videoUrl: 1,
+          hlsUrl: 1,
+          processingStatus: 1,
+          processingProgress: 1,
+          qualities: 1,
+          originalUrl: 1,
           videoImage: 1,
           description: 1,
           hashTag: 1,
@@ -858,6 +874,11 @@ exports.getShorts = async (req, res) => {
             videoType: 1,
             videoTime: 1,
             videoUrl: 1,
+            hlsUrl: 1,
+            processingStatus: 1,
+            processingProgress: 1,
+            qualities: 1,
+            originalUrl: 1,
             videoImage: 1,
             description: 1,
             hashTag: 1,
@@ -1202,6 +1223,11 @@ exports.getVideos = async (req, res) => {
             videoType: 1,
             videoTime: 1,
             videoUrl: 1,
+            hlsUrl: 1,
+            processingStatus: 1,
+            processingProgress: 1,
+            qualities: 1,
+            originalUrl: 1,
             videoImage: 1,
             scheduleType: 1,
             scheduleTime: 1,
@@ -2867,6 +2893,11 @@ exports.detailsOfVideo = async (req, res) => {
             videoType: 1,
             videoTime: 1,
             videoUrl: 1,
+            hlsUrl: 1,
+            processingStatus: 1,
+            processingProgress: 1,
+            qualities: 1,
+            originalUrl: 1,
             videoImage: 1,
             description: 1,
             hashTag: 1,
@@ -4605,3 +4636,36 @@ exports.deleteVideoRecord = async (req, res) => {
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
   }
 };
+
+// Query HLS transcoding / processing status
+exports.getProcessingStatus = async (req, res) => {
+  try {
+    const { videoId } = req.query;
+    if (!videoId || !mongoose.Types.ObjectId.isValid(videoId)) {
+      return res.status(200).json({ status: false, message: "Valid videoId is required." });
+    }
+
+    const video = await Video.findById(videoId).select(
+      "title videoType processingStatus processingProgress hlsUrl originalUrl qualities videoUrl"
+    );
+
+    if (!video) {
+      return res.status(200).json({ status: false, message: "Video not found." });
+    }
+
+    return res.status(200).json({
+      status: true,
+      videoId: video._id,
+      processingStatus: video.processingStatus || "completed",
+      processingProgress: video.processingProgress || 100,
+      hlsUrl: video.hlsUrl || null,
+      originalUrl: video.originalUrl || video.videoUrl,
+      videoUrl: video.hlsUrl || video.videoUrl,
+      qualities: video.qualities || [],
+    });
+  } catch (error) {
+    console.error("Error in getProcessingStatus:", error);
+    return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
+  }
+};
+

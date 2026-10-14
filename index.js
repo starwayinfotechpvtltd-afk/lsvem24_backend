@@ -7,13 +7,12 @@ const app = express();
 const cors = require("cors");
 
 app.use(cors());
-app.use(express.json());
 
 //logging middleware
 var logger = require("morgan");
 app.use(logger("dev"));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "5000mb" }));
+app.use(express.urlencoded({ extended: true, limit: "5000mb" }));
 
 //path
 const path = require("path");
@@ -90,7 +89,24 @@ db.once("open", async () => {
   
   app.use('/api', routes);
 
-  app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+  app.use(
+    "/uploads",
+    express.static(path.join(__dirname, "uploads"), {
+      setHeaders: (res, filePath) => {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Headers", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader("Accept-Ranges", "bytes");
+        if (filePath.endsWith(".m3u8")) {
+          res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (filePath.endsWith(".ts")) {
+          res.setHeader("Content-Type", "video/MP2T");
+          res.setHeader("Cache-Control", "public, max-age=31536000");
+        }
+      },
+    })
+  );
 
   app.use(express.static(path.join(__dirname, "public")));
   
@@ -107,6 +123,14 @@ db.once("open", async () => {
   server.listen(PORT, '0.0.0.0', () => {
     console.log("Hello World ! listening on " + PORT);
   });
+
+  // Configure timeouts on HTTP server to support uploads of any file size
+  server.timeout = 0; // Disable socket timeout (unlimited)
+  server.keepAliveTimeout = 3600000; // 1 hour keep-alive
+  server.headersTimeout = 3601000; // Must be greater than keepAliveTimeout
+  if (typeof server.requestTimeout !== 'undefined') {
+    server.requestTimeout = 0; // Disable request timeout in Node 18+
+  }
 });
 
 

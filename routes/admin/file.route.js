@@ -11,20 +11,24 @@ const checkAccessWithSecretKey = require("../../checkAccess");
 //controller
 const FileController = require("../../controllers/admin/file.controller");
 
-//upload content to digital ocean storage
+//upload content to storage
 route.post(
   "/upload-file",
+  checkAccessWithSecretKey(),
   function (request, response, next) {
     upload(request, response, function (error) {
       if (error) {
-        console.log("error in file ", error);
+        console.error("error in admin file upload: ", error);
+        return response.status(500).json({
+          status: false,
+          message: error.message || "File upload failed",
+        });
       } else {
         console.log("File uploaded successfully.");
         next();
       }
     });
   },
-  checkAccessWithSecretKey(),
   FileController.uploadContent
 );
 

@@ -24,6 +24,7 @@ const { generateUniqueVideoId } = require("../../util/generateUniqueVideoId");
 
 //deleteFromStorage
 const { deleteFromStorage } = require("../../util/storageHelper");
+const videoTranscodeQueue = require("../../util/videoQueue");
 
 //upload (normal videos or shorts) by the admin
 exports.uploadVideo = async (req, res) => {
@@ -171,6 +172,9 @@ exports.uploadVideo = async (req, res) => {
     video.audienceType = req?.body?.audienceType;
     video.commentType = req?.body?.commentType;
     video.videoUrl = req?.body?.videoUrl;
+    video.originalUrl = req?.body?.videoUrl;
+    video.processingStatus = "pending";
+    video.processingProgress = 0;
     video.videoImage = req?.body?.videoImage;
     video.isAddByAdmin = true;
 
@@ -213,6 +217,13 @@ exports.uploadVideo = async (req, res) => {
     video.uniqueVideoId = uniqueVideoId;
 
     await video.save();
+
+    // Asynchronously trigger background HLS adaptive bitrate transcoding
+    videoTranscodeQueue.enqueue({
+      videoId: video._id.toString(),
+      videoUrl: video.videoUrl,
+      videoType: video.videoType,
+    });
 
     const data = await Video.findById(video._id).populate(
       "userId",

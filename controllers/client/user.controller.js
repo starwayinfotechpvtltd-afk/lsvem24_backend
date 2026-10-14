@@ -29,6 +29,7 @@ const WalletHistory = require("../../models/walletHistory.model");
 const VideoWatchReward = require("../../models/videoWatchReward.model");
 const CheckIn = require("../../models/checkIn.model");
 const CoinPlanHistory = require("../../models/coinplanHistory.model");
+const OTP = require("../../models/otp.model");
 
 //mongoose
 const mongoose = require("mongoose");
@@ -1293,6 +1294,8 @@ exports.detailsOfChannel = async (req, res, next) => {
       isSubscribed: isSubscribed,
       channelName: channelName,
       channelImage: channelImage,
+      userImage: channelImage,
+      image: channelImage,
       channelType: parsedChannelType,
       subscriptionCost: subscriptionCost,
       videoUnlockCost: videoUnlockCost,
@@ -1822,6 +1825,58 @@ exports.searchChannel = async (req, res) => {
   }
 };
 
+// Reusable user account deletion function
+const performUserAccountDeletion = async (user) => {
+  if (user.image) {
+    await deleteFromStorage(user.image);
+  }
+
+  const videosToDelete = await Video.find({ userId: user._id });
+  for (const video of videosToDelete) {
+    if (video.videoImage) {
+      await deleteFromStorage(video.videoImage);
+    }
+    if (video.videoUrl) {
+      await deleteFromStorage(video.videoUrl);
+    }
+    await Video.deleteOne({ _id: video._id });
+  }
+
+  await Promise.all([
+    WatchHistory.deleteMany({ userId: user?._id }),
+    LikeHistoryOfVideo.deleteMany({ userId: user?._id }),
+    VideoComment.deleteMany({ userId: user?._id }),
+    LikeHistoryOfvideoComment.deleteMany({ userId: user?._id }),
+    LiveUser.deleteMany({ userId: user?._id }),
+    LiveHistory.deleteMany({ userId: user?._id }),
+    MonetizationRequest.deleteMany({ userId: user?._id }),
+    Notification.deleteMany({ userId: user?._id }),
+    PlayList.deleteMany({ userId: user?._id }),
+    PremiumPlanHistory.deleteMany({ userId: user?._id }),
+    Report.deleteMany({ userId: user?._id }),
+    SaveToWatchLater.deleteMany({ userId: user?._id }),
+    SearchHistory.deleteMany({ userId: user?._id }),
+    UserWiseSubscription.deleteMany({
+      $or: [
+        { userId: user?._id },
+        { channelId: user?._id?.toString() },
+        { channelId: user?.channelId || "NONE" },
+      ],
+    }),
+    WithdrawRequest.deleteMany({ userId: user?._id }),
+    History.deleteMany({ userId: user?._id }),
+    History.deleteMany({ otherUserId: user?._id }),
+    CheckIn.deleteMany({ userId: user?._id }),
+    CoinPlanHistory.deleteMany({ userId: user?._id }),
+    VideoWatchReward.deleteMany({ userId: user?._id }),
+    WalletHistory.deleteMany({ userId: user?._id }),
+  ]);
+
+  await User.deleteOne({ _id: user?._id });
+};
+
+exports.performUserAccountDeletion = performUserAccountDeletion;
+
 //delete user account
 exports.deleteUserAccount = async (req, res) => {
   try {
@@ -1833,10 +1888,7 @@ exports.deleteUserAccount = async (req, res) => {
 
     const userId = new mongoose.Types.ObjectId(req.query.userId);
 
-    const [user, videosToDelete] = await Promise.all([
-      User.findById(userId),
-      Video.find({ userId: userId }),
-    ]);
+    const user = await User.findById(userId);
 
     if (!user) {
       return res
@@ -1850,47 +1902,21 @@ exports.deleteUserAccount = async (req, res) => {
         .json({ status: false, message: "you are blocked by the admin." });
     }
 
-    if (user.image) {
-      await deleteFromStorage(user.image);
+    if (req.query.otp) {
+      const email = req.query.email || user.email;
+      if (email) {
+        const otpRecord = await OTP.findOne({ email: email });
+        if (!otpRecord) {
+          return res.status(200).json({ status: false, message: "OTP not found or expired. Please request a new OTP." });
+        }
+        if (parseInt(req.query.otp) !== otpRecord.otp) {
+          return res.status(200).json({ status: false, message: "Invalid OTP! Please try again." });
+        }
+        await otpRecord.deleteOne();
+      }
     }
 
-    await videosToDelete.map(async (video) => {
-      if (video.videoImage) {
-        await deleteFromStorage(video.videoImage);
-      }
-
-      if (video.videoUrl) {
-        await deleteFromStorage(video.videoUrl);
-      }
-
-      await Video.deleteOne({ _id: video._id });
-    });
-
-    await Promise.all([
-      WatchHistory.deleteMany({ userId: user?._id }),
-      LikeHistoryOfVideo.deleteMany({ userId: user?._id }),
-      VideoComment.deleteMany({ userId: user?._id }),
-      LikeHistoryOfvideoComment.deleteMany({ userId: user?._id }),
-      LiveUser.deleteMany({ userId: user?._id }),
-      LiveHistory.deleteMany({ userId: user?._id }),
-      MonetizationRequest.deleteMany({ userId: user?._id }),
-      Notification.deleteMany({ userId: user?._id }),
-      PlayList.deleteMany({ userId: user?._id }),
-      PremiumPlanHistory.deleteMany({ userId: user?._id }),
-      Report.deleteMany({ userId: user?._id }),
-      SaveToWatchLater.deleteMany({ userId: user?._id }),
-      SearchHistory.deleteMany({ userId: user?._id }),
-      UserWiseSubscription.deleteMany({ userId: user?._id }),
-      WithdrawRequest.deleteMany({ userId: user?._id }),
-      History.deleteMany({ userId: user?._id }),
-      History.deleteMany({ otherUserId: user?._id }),
-      CheckIn.deleteMany({ userId: user?._id }),
-      CoinPlanHistory.deleteMany({ userId: user?._id }),
-      VideoWatchReward.deleteMany({ userId: user?._id }),
-      WalletHistory.deleteMany({ userId: user?._id }),
-    ]);
-
-    await User.deleteOne({ _id: user?._id });
+    await performUserAccountDeletion(user);
 
     return res
       .status(200)
