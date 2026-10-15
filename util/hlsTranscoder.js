@@ -85,6 +85,7 @@ function transcodeProfile({ inputPath, outputDir, profile, isPortrait, segmentDu
         "-c:v libx264",
         "-preset veryfast",
         "-pix_fmt yuv420p",
+        "-threads 0",           // use all available CPU cores for this rendition
         `-vf ${scaleFilter}`,
         `-b:v ${profile.videoBitrate}`,
         `-maxrate ${profile.maxrate}`,
@@ -267,49 +268,64 @@ async function transcodeToHLS({ inputPath, videoId, videoType, onProgress }) {
     fs.mkdirSync(hlsDir, { recursive: true });
   }
 
-  // 5. Transcode each profile sequentially to preserve server resources
-  const completedRenditions = [];
+  // 5. Transcode ALL profiles in PARALLEL for maximum speed on large videos.
+  //    Each profile gets its own FFmpeg process using all CPU threads.
+  //    Progress is tracked per-profile and the average is reported overall.
   const totalProfiles = targetProfiles.length;
+  console.log(`[HLS] Starting PARALLEL transcode of ${totalProfiles} profiles for video ${videoId}...`);
 
-  for (let i = 0; i < totalProfiles; i++) {
-    const profile = targetProfiles[i];
-    console.log(`Encoding rendition [${i + 1}/${totalProfiles}]: ${profile.label} for video ${videoId}...`);
+  // Per-profile progress tracking (0–1)
+  const profileProgressMap = new Array(totalProfiles).fill(0);
 
-    try {
-      const result = await transcodeProfile({
-        inputPath,
-        outputDir: hlsDir,
-        profile,
-        isPortrait: isShort,
-        segmentDuration,
-        fps: meta.fps || 30,
-        onProgress: (prog) => {
-          if (onProgress && meta.duration > 0 && prog && typeof prog.timemark === "string") {
-            try {
-              const parts = prog.timemark.split(":");
-              if (parts.length >= 3) {
-                const hours = parseFloat(parts[0]) || 0;
-                const minutes = parseFloat(parts[1]) || 0;
-                const seconds = parseFloat(parts[2]) || 0;
-                const totalSeconds = hours * 3600 + minutes * 60 + seconds;
-                const profileProgress = Math.max(0, Math.min(1, totalSeconds / meta.duration));
-                const overall = Math.round(((i + profileProgress) / totalProfiles) * 90);
-                if (Number.isFinite(overall) && !Number.isNaN(overall)) {
-                  onProgress(Math.max(5, Math.min(95, overall)));
-                }
-              }
-            } catch (err) {
-              // Ignore progress parsing errors
-            }
-          }
-        },
-      });
-
-      completedRenditions.push(result);
-    } catch (profileErr) {
-      console.error(`Failed to transcode profile ${profile.label} for video ${videoId}:`, profileErr);
+  const reportOverallProgress = () => {
+    if (!onProgress || meta.duration <= 0) return;
+    const avg = profileProgressMap.reduce((s, v) => s + v, 0) / totalProfiles;
+    const overall = Math.round(avg * 90);
+    if (Number.isFinite(overall) && !Number.isNaN(overall)) {
+      onProgress(Math.max(5, Math.min(95, overall)));
     }
-  }
+  };
+
+  const transcodePromises = targetProfiles.map((profile, i) => {
+    console.log(`[HLS] Launching rendition [${i + 1}/${totalProfiles}]: ${profile.label} for video ${videoId}`);
+    return transcodeProfile({
+      inputPath,
+      outputDir: hlsDir,
+      profile,
+      isPortrait: isShort,
+      segmentDuration,
+      fps: meta.fps || 30,
+      onProgress: (prog) => {
+        if (meta.duration > 0 && prog && typeof prog.timemark === "string") {
+          try {
+            const parts = prog.timemark.split(":");
+            if (parts.length >= 3) {
+              const hours = parseFloat(parts[0]) || 0;
+              const minutes = parseFloat(parts[1]) || 0;
+              const seconds = parseFloat(parts[2]) || 0;
+              const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+              profileProgressMap[i] = Math.max(0, Math.min(1, totalSeconds / meta.duration));
+              reportOverallProgress();
+            }
+          } catch (_) {}
+        }
+      },
+    });
+  });
+
+  const settledResults = await Promise.allSettled(transcodePromises);
+
+  const completedRenditions = [];
+  settledResults.forEach((result, i) => {
+    if (result.status === "fulfilled") {
+      completedRenditions.push(result.value);
+    } else {
+      console.error(
+        `[HLS] Failed to transcode profile ${targetProfiles[i].label} for video ${videoId}:`,
+        result.reason
+      );
+    }
+  });
 
   if (completedRenditions.length === 0) {
     throw new Error(`All HLS renditions failed for video: ${videoId}`);
