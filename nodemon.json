@@ -1,0 +1,24 @@
+{
+  "verbose": true,
+  "ignore": [
+    "uploads/*",
+    "uploads/**/*",
+    "public/*",
+    "public/**/*",
+    "node_modules/*",
+    "node_modules/**/*",
+    "*.log",
+    "setting.js",
+    ".git/*",
+    ".git/**/*"
+  ],
+  "watch": [
+    "index.js",
+    "routes",
+    "controllers",
+    "models",
+    "util",
+    "middleware"
+  ],
+  "ext": "js,json"
+}
